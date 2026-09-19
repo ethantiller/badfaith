@@ -16,11 +16,10 @@ def validate(response: str, actual_paragraphs: str) -> bool:
     except json.JSONDecodeError:
         actual_data = None
 
-    claims = response_data.get("claims", [])
-
     nemotron_quotes = []
-    for claim in claims:
-        nemotron_quotes.append(claim["quote"])
+    for item_type in ("claims", "flags"):
+        for item in response_data.get(item_type, []):
+            nemotron_quotes.append(item["quote"])
 
     if isinstance(actual_data, dict):
         actual_quotes = [

@@ -4,7 +4,7 @@
   "flags": [
     {
       "paragraph_id": 1,
-      "quote": "reckless scheme",
+      "quote": "call a quorum",
       "technique": "loaded_language",
       "severity": "low | medium | high",
       "confidence": 0.82,
