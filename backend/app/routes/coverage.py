@@ -4,19 +4,20 @@ from ddgs.exceptions import DDGSException
 from fastapi import APIRouter, HTTPException
 
 from backend.app.lib.helpers.web_search import search
-from backend.app.lib import types
+from backend.app.lib.types import CoverageRequest, CoverageResponse, RelatedSource, Omission, CoverageMeta
 
 router = APIRouter()
 
-CoverageRequest = types.CoverageRequest
-CoverageResponse = types.CoverageResponse
-RelatedSource = types.RelatedSource
-Omission = types.Omission
-CoverageMeta = types.CoverageMeta
 
-
-@router.post("/coverage", response_model=CoverageResponse)
-async def get_coverage(request: CoverageRequest) -> CoverageResponse:
+@router.post(
+    "/coverage",
+    response_model=CoverageResponse,
+    responses={
+        404: {"description": "No related news articles were found."},
+        500: {"description": "Internal server error."},
+    },
+)
+async def get_coverage(request: CoverageRequest):
     """
     Endpoint to retrieve coverage information for a claim.
     """
