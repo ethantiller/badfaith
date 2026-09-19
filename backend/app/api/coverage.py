@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.ext.search import search
 from backend.app.types import CoverageRequest, CoverageResponse, VerificationStatus, RelatedSource, Omission, CoverageMeta
 from backend.app.middleware.rate_limit import check_rate_limit, increment_rate_limit
-from backend.app.deps import get_db_session, get_current_user
+from backend.app.deps import get_db_session
+from backend.app.ext.supabase import get_current_user
 
 router = APIRouter()
 
@@ -26,11 +27,14 @@ router = APIRouter()
 async def get_coverage(
     request: CoverageRequest,
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    user_id: Annotated[UUID, Depends(get_current_user)],
+    user_payload: Annotated[dict, Depends(get_current_user)],
 ):
     """
     Endpoint to retrieve coverage information for a claim.
     """
+    # Extract user ID from JWT payload
+    user_id = UUID(user_payload["sub"])
+
     # Check rate limit
     allowed, limit_info = await check_rate_limit(session, user_id)
     if not allowed:

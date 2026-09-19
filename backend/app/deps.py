@@ -12,10 +12,10 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-db = None
+db: Database | None = None
 
 
-def set_db(database: Database):
+def set_db(database: Database | None) -> None:
     global db
     db = database
 
