@@ -1,4 +1,5 @@
 // API Contract types that mirror the Python backend schemas
+import type { User, Session } from '@supabase/supabase-js';
 
 // SemEval-2020 Task 11: Propaganda Techniques Identification. Covers all 14 SemEval classes;
 // whataboutism, straw_man and red_herring are one merged class in SemEval.
@@ -82,4 +83,25 @@ export interface CoverageResponse {
 
 export interface HealthResponse {
   status: 'ok';
+}
+
+export interface UserSignInRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserSignInResponse {
+  user: User;
+  session: Session;
+}
+
+export interface UserSignUpRequest {
+  email: string;
+  password: string;
+  isAgeVerified: boolean;
+}
+
+export interface UserSignUpResponse {
+  user: User | null;
+  session: Session | null;
 }

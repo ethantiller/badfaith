@@ -65,10 +65,8 @@ else from working if it isn't done.
 
 ### Auth
 
-- [ ] Enable Anonymous sign-in in the Firebase console
-- [ ] `app/deps.py` — `current_uid` verifying the Bearer token via Admin SDK, 401 on failure
-- [ ] `app/deps.py` — `enforce_rate_limit`, Firestore transactional counter per uid per
-      hour bucket, plus the global ceiling, 429 on breach
+- [ ] `app/deps.py` — `current_uid` verifying the Supabase Bearer token (JWT), 401 on failure
+- [ ] `app/deps.py` — `enforce_rate_limit`, Supabase row-level security or Firestore transactional counter per uid per hour bucket, plus the global ceiling, 429 on breach
 - [ ] Wire both dependencies into `/analyze` and `/coverage`
 - [ ] `tests/test_auth.py` — missing header, malformed scheme, expired token all 401
 
@@ -77,14 +75,14 @@ else from working if it isn't done.
 - [ ] `pnpm create wxt`, React + TypeScript template
 - [ ] `wxt.config.ts` — permissions `storage`, `sidePanel`, `activeTab`; host permissions
       limited to the five domains; no `externally_connectable`
-- [ ] `lib/types.ts` — hand-mirror of the Python schemas plus the `Msg` union
-- [ ] `lib/auth.ts` — `getIdToken()`, importing from `firebase/auth/web-extension`.
-      Anonymous sign-in on first call
-- [ ] `lib/api.ts` — `postAnalyze`, `postCoverage`, base URL from `import.meta.env.WXT_API_BASE`
+- [x] `lib/types.ts` — hand-mirror of the Python schemas plus auth request/response types
+- [x] `lib/auth.ts` — Email auth with `chrome.storage.local` persistence. Exports: `signUp()`, `signIn()`, `signOut()`, `resetPassword()`, `updatePassword()`, `getIdToken()`, `getSession()`, `refreshSession()`, `initAuth()`
+- [x] `lib/api_helpers.ts` — `ApiError`, `makeAuthenticatedRequest<T>()`, `buildHeaders()`, `generateRequestId()`, `getErrorMessage()`
+- [x] `lib/analyze.ts` — `sendAnalyzeRequest(request)` → POST `/api/v1/analyze`
+- [x] `lib/coverage.ts` — `sendCoverageRequest(request)` → POST `/api/v1/coverage`
 - [ ] `entrypoints/background.ts` — message router, `sender.id` check, side panel open on
       action click, no module-level mutable state
-- [ ] **Smoke test the full auth loop early**: click button → anonymous sign-in → token →
-      `/analyze` → 200 with a hardcoded paragraph array. Do this before any real UI exists
+- [ ] **Smoke test the full auth loop early**: sign up/in → token → `/analyze` → 200 with a hardcoded paragraph array. Do this before any real UI exists. Auth and API helpers are done; just wire up background worker + content script
 - [ ] `entrypoints/content.ts` — message handling, extract, send, receive, inject
 - [ ] `lib/extract.ts` — Readability against `doc.cloneNode(true)`, never the live document
 - [ ] `lib/metadata.ts` — `detectSection()` from URL path, `article:section` meta,
