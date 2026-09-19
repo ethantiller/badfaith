@@ -1,42 +1,63 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import httpx
 
-import uvicorn
-
-from backend.app.api.coverage import router as coverage_router
-from backend.app.db import create_database_from_env
+from backend.app.config import get_settings
+from backend.app.db import Database
 from backend.app.deps import set_db
-from backend.app.middleware.cors import add_cors_middleware
-from backend.app.middleware.static import add_static_files
+from backend.app.api.coverage import router as coverage_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    database = create_database_from_env()
-    if database is not None:
-        await database.connect()
-        set_db(database)
+    """Initialize and cleanup resources on startup/shutdown."""
+    settings = get_settings()
 
-    try:
-        yield
-    finally:
-        if database is not None:
-            await database.close()
-            set_db(None)
+    # Initialize database
+    db = Database(settings.database_url)
+    db.init()
+    set_db(db)
+
+    # Initialize shared HTTP client for external calls
+    app.state.http_client = httpx.AsyncClient(timeout=settings.nemotron_timeout_s)
+
+    yield
+
+    # Cleanup
+    await app.state.http_client.aclose()
+    await db.close()
 
 
-fast_api_app = FastAPI(title="Bad Faith API", version="0.1.0", lifespan=lifespan, docs_url=None)
+def create_app() -> FastAPI:
+    """Construct and configure the FastAPI application."""
+    settings = get_settings()
+    app = FastAPI(title="badfaith", version="0.1.0", lifespan=lifespan, docs_url=None)
 
-add_static_files(fast_api_app)
-add_cors_middleware(fast_api_app)
+    # CORS middleware — allow only the Chrome extension origin
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[settings.extension_origin],
+        allow_credentials=True,
+        allow_methods=["POST", "GET"],
+        allow_headers=["authorization", "content-type"],
+    )
 
-fast_api_app.include_router(coverage_router)
+    # Mount routers
+    app.include_router(coverage_router)
 
-@fast_api_app.get("/health")
-def health():
-    return {"status": "ok"}
+    # Health check endpoint (no auth required)
+    @app.get("/health")
+    async def health():
+        return {"status": "ok"}
+
+    return app
+
+
+app = create_app()
 
 
 if __name__ == "__main__":
-    uvicorn.run(fast_api_app, host="0.0.0.0", port=8000)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -4,11 +4,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    DATABASE_INSTANCE_STRING: str | None = None
+    # Database
+    database_url: str  # Supabase async PostgreSQL: postgresql+asyncpg://user:pass@host/db
+
+    # Supabase
+    supabase_url: str
+    supabase_anon_key: str
+
+    # CORS — set to specific extension ID in production
+    extension_origin: str = "chrome-extension://*"
+
+    # Nemotron
     nvidia_api_key: str | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model_large: str = "nvidia/nemotron-3-super-120b-a12b"
     nvidia_model_small: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nemotron_timeout_s: float = 30.0
+
+    # Cache
+    cache_ttl_hours: int = 24
 
     model_config = SettingsConfigDict(
         env_file=".env",
