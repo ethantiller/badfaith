@@ -15,8 +15,15 @@ Omission = types.Omission
 CoverageMeta = types.CoverageMeta
 
 
-@router.post("/coverage", response_model=CoverageResponse)
-async def get_coverage(request: CoverageRequest) -> CoverageResponse:
+@router.post(
+    "/coverage",
+    response_model=CoverageResponse,
+    responses={
+        404: {"description": "No related news articles were found."},
+        500: {"description": "Internal server error."},
+    },
+)
+async def get_coverage(request: CoverageRequest):
     """
     Endpoint to retrieve coverage information for a claim.
     """
