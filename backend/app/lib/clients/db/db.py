@@ -3,7 +3,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
-from backend.app.lib.db.db_tables import Base
+from backend.app.lib.clients.db.db_tables import Base
 
 
 class Database:
