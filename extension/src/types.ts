@@ -1,4 +1,5 @@
 // API Contract types that mirror the Python backend schemas
+import type { User, Session } from '@supabase/supabase-js';
 
 // SemEval-2021 Task 6: Propaganda Techniques Identification (14 techniques)
 export type Technique =
@@ -78,4 +79,25 @@ export interface CoverageResponse {
 
 export interface HealthResponse {
   status: 'ok';
+}
+
+export interface UserSignInRequest {
+  email: string;
+  password: string;
+}
+
+export interface UserSignInResponse {
+  user: User;
+  session: Session;
+}
+
+export interface UserSignUpRequest {
+  email: string;
+  password: string;
+  isAgeVerified: boolean;
+}
+
+export interface UserSignUpResponse {
+  user: User | null;
+  session: Session | null;
 }

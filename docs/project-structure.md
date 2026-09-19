@@ -447,7 +447,7 @@ blank the page. Tooltip content in a Shadow DOM.
 export async function postAnalyze(body: AnalyzeRequest): Promise<AnalyzeResponse>
 export async function postCoverage(body: CoverageRequest): Promise<CoverageResponse>
 ```
-Background-only. Reads base URL from `import.meta.env.WXT_API_BASE`.
+Background-only. Reads base URL from `import.meta.env.API_BASE`.
 
 ### `lib/auth.ts`
 ```ts
