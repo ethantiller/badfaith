@@ -1,24 +1,13 @@
-# Bad Faith 2026
-
-## SteelHacks XIII Hackathon 2026
-
-Project Members:
-- Maxwell Blevins
-- Jason Sun
-- Ethan Tiller
-
 # Project structure and contracts
 
-Bad Faith is a monorepo for a news article auditing product. The backend is a Python
-3.12 FastAPI server, the frontend is a Chrome extension, and the eval harness is a
-standalone Python CLI.
+Monorepo. Python 3.12 backend, TypeScript extension, Python eval harness.
 
-Use `badfaith` as the package/product slug unless a more specific deploy-time identifier
-is intentionally chosen. The slug can affect the Python package name, extension ID, and
-Firestore collection prefix, so keep it consistent across the stack.
+`litmus` is used below as the package/product slug. Swap it once the name is locked —
+it appears in the Python package name, the extension ID, and the Firestore collection
+prefix, so decide before hour one.
 
 ```
-badfaith/
+litmus/
 ├── extension/
 ├── backend/
 ├── eval/

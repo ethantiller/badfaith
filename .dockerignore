@@ -1,3 +1,15 @@
+# Git and repository metadata
+.git/
+.gitignore
+.gitattributes
+
+# Docker metadata that should not enter build contexts
+.dockerignore
+docker-compose*.yml
+docker-compose*.yaml
+compose*.yml
+compose*.yaml
+
 # macOS / OS cruft
 .DS_Store
 .AppleDouble
@@ -6,8 +18,6 @@ Icon?
 ._*
 .Spotlight-V100
 .Trashes
-
-# Windows / Linux cruft
 Thumbs.db
 ehthumbs.db
 Desktop.ini
@@ -15,11 +25,7 @@ Desktop.ini
 
 # Editor / IDE state
 .idea/
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
+.vscode/
 *.swp
 *.swo
 *.swn
@@ -64,7 +70,7 @@ __pycache__/
 coverage.xml
 htmlcov/
 
-# Python environments and packaging
+# Python environments and packaging output
 .venv/
 venv/
 env/
@@ -116,7 +122,7 @@ public/build/
 stats.html
 *.tsbuildinfo
 
-# Chrome extension build artifacts
+# Chrome extension build artifacts and signing keys
 extension/dist/
 extension/build/
 extension/out/
@@ -129,6 +135,7 @@ extension/key.pem
 extension/update.xml
 web-ext-artifacts/
 *.crx
+*.pem
 
 # Browser automation output
 playwright-report/
@@ -143,6 +150,3 @@ selenium-debug.log
 tmp/
 temp/
 .cache/
-.claude
-CLAUDE.md
-AGENTS.md
