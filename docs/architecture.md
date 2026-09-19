@@ -16,8 +16,8 @@ live elsewhere.
 | In-page extraction | Mozilla Readability | TypeScript |
 | Backend API | FastAPI + Uvicorn | Python 3.12 |
 | Model calls | Nemotron via build.nvidia.com or OpenRouter, over `httpx` async | Python |
-| Cache + counters | Firestore (Native mode) | — |
-| Auth | Firebase Anonymous Auth; Firebase Admin SDK server-side | — |
+| Cache + counters | Supabase (PostgreSQL) | SQL |
+| Auth | Supabase Auth (Anonymous mode) | — |
 | Outside sources | GDELT DOC API | Python |
 | Eval harness | Standalone Python CLI, writes JSON | Python |
 | Container | Docker, distroless or slim base | — |
@@ -208,10 +208,53 @@ Endpoints are few:
 - `GET /health` — Cloud Run liveness.
 - `GET /eval/results` — serves the latest eval JSON to the eval page.
 
-**Firestore** handles both persistence needs: the analysis cache and per-user rate-limit
-counters. Chosen over Postgres because the data is document-shaped, it needs no schema
-migration, there's no instance to provision, and Firebase is already in the stack for
-auth. Nothing here needs SQL.
+**Supabase (PostgreSQL + Auth)** handles persistence: the analysis cache, coverage cache,
+and per-user rate-limit counters. PostgreSQL gives us structured queries, Supabase Auth
+integrates with the backend seamlessly, and Row-Level Security (RLS) policies protect
+user data. Four tables:
+
+```sql
+-- Cache full analysis results (URL + paragraphs → flags, claims, coverage)
+CREATE TABLE cached_analyses (
+  doc_hash VARCHAR(64) PRIMARY KEY,
+  url VARCHAR(2048) NOT NULL,
+  analysis_result JSONB NOT NULL,
+  cached_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL,
+  created_by UUID REFERENCES auth.users(id)
+);
+
+-- Cache GDELT coverage verification (doc_hash, claim_id → sources)
+CREATE TABLE cached_coverage (
+  doc_hash VARCHAR(64) NOT NULL,
+  claim_id VARCHAR(64) NOT NULL,
+  coverage_result JSONB NOT NULL,
+  cached_at TIMESTAMP DEFAULT NOW(),
+  PRIMARY KEY (doc_hash, claim_id)
+);
+
+-- Per-user hourly rate-limit counters
+CREATE TABLE rate_limits (
+  uid UUID REFERENCES auth.users(id),
+  hour_bucket VARCHAR(20) NOT NULL,
+  request_count INT DEFAULT 1,
+  PRIMARY KEY (uid, hour_bucket)
+);
+
+-- Global hourly rate-limit ceiling (backstop)
+CREATE TABLE global_rate_limit (
+  hour_bucket VARCHAR(20) PRIMARY KEY,
+  request_count INT DEFAULT 1
+);
+
+-- Indexes for fast lookups
+CREATE INDEX idx_cached_analyses_expires ON cached_analyses(expires_at);
+CREATE INDEX idx_rate_limits_hour ON rate_limits(uid, hour_bucket);
+```
+
+The backend queries these tables on every request to check cache, verify rate limits,
+and write results. `doc_hash` is stable across reruns (hash of normalized URL + text),
+so a re-read of the same article serves cached results instantly.
 
 **Security posture**, all decided:
 
@@ -220,7 +263,7 @@ auth. Nothing here needs SQL.
 - CORS allowlists the extension origin only.
 - Request size caps at the Pydantic level: max paragraphs, max characters per paragraph,
   max total payload.
-- Rate limits per Firebase `uid`, plus a global ceiling as a backstop against burning
+- Rate limits per Supabase user `uid`, plus a global ceiling as a backstop against burning
   Nemotron credits.
 - Any XML parsing — RSS or uploaded documents, if those land — uses `defusedxml`, or
   `feedparser` for feeds. A pytest case fires an XXE payload at a local server and
@@ -230,27 +273,26 @@ auth. Nothing here needs SQL.
 
 ## 7. Auth
 
-**Firebase Anonymous Auth.** On first use the background worker signs in anonymously and
-gets a real Firebase `uid` with a signed ID token, no user interaction at all. The SDK
-manages the ID token (1 hour) and refresh token itself, so we write no refresh logic and
+**Supabase Anonymous Auth.** On first use the background worker signs in anonymously
+via Supabase Auth and gets a signed JWT access token, no user interaction at all. The SDK
+manages the token (1 hour) and refresh token itself, so we write no refresh logic and
 hit none of the token-rotation race conditions a hand-rolled JWT setup would bring.
 
-Import from `firebase/auth/web-extension`, not the standard `firebase/auth` — MV3 bans
-remotely loaded code and the web-extension build strips the offending pieces.
-
 Tokens live in `chrome.storage`, never `localStorage`, because a content script shares
-the page's `localStorage` with the news site and every ad script on it. Firebase stays in
-the background worker for the same reason.
+the page's `localStorage` with the news site and every ad script on it. Supabase Auth
+stays in the background worker for the same reason.
 
-Server-side, the Firebase Admin SDK verifies the token on every request and hands the
-route handler a `uid`. Cloud Run's service account supplies credentials automatically
-when the Firebase and GCP projects match, so there are no key files anywhere.
+Server-side, the FastAPI backend verifies the JWT token on every request using Supabase's
+public key (which can be cached) and extracts the user's `uid` from the `sub` claim.
+Supabase provides structured session management, and Row-Level Security policies in the
+database mean a user can only query their own rate-limit counters — no extra backend logic
+needed.
 
-The Firebase web `apiKey` ships inside the extension, which is fine — unlike the Nemotron
-key it is a project identifier, not a secret.
+The Supabase API key and project URL ship inside the extension, which is fine — unlike
+the Nemotron key they are project identifiers, not secrets.
 
-Real Google sign-in is out of scope. It needs `chrome.identity` plus
-`signInWithCredential` and OAuth console configuration, and no judge scores it.
+Real Google sign-in is out of scope. It needs `chrome.identity` plus more complex auth
+flows, and no judge scores it.
 
 ---
 
