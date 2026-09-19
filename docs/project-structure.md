@@ -136,208 +136,105 @@ than adopting all fourteen in the product.
 
 ```
 backend/
-├── Dockerfile
 ├── pyproject.toml
 ├── app/
-│   ├── main.py
-│   ├── config.py
-│   ├── deps.py
-│   ├── routes/
-│   │   ├── analyze.py
-│   │   ├── coverage.py
-│   │   ├── health.py
-│   │   └── evals.py
-│   ├── schemas/
-│   │   ├── requests.py
-│   │   ├── responses.py
-│   │   └── models.py
-│   ├── pipeline/
-│   │   ├── orchestrate.py
-│   │   ├── classify.py
-│   │   ├── label.py
-│   │   ├── ground.py
-│   │   └── verify.py
-│   ├── clients/
-│   │   ├── nemotron.py
-│   │   ├── gdelt.py
-│   │   └── store.py
-│   ├── prompts/
-│   │   ├── classify.txt
-│   │   ├── label.txt
-│   │   └── verify.txt
-│   └── utils/
-│       ├── hashing.py
-│       └── text.py
+│   ├── main.py                (FastAPI app, lifespan, router mounting)
+│   ├── config.py              (pydantic-settings, get_settings())
+│   ├── deps.py                (Dependencies: user extraction, DB session)
+│   ├── types.py               (Pydantic models: shared contracts)
+│   ├── api/                   (HTTP route handlers)
+│   │   ├── __init__.py
+│   │   ├── coverage.py        (POST /coverage endpoint)
+│   │   ├── analyze.py         (TODO: POST /analyze)
+│   │   ├── health.py          (TODO: GET /health)
+│   │   └── evals.py           (TODO: GET /eval/results)
+│   ├── db/                    (Database, connection pooling, ORM)
+│   │   ├── __init__.py
+│   │   ├── connection.py      (Database class, AsyncSession factory)
+│   │   └── models.py          (SQLAlchemy ORM: CachedAnalysis, RateLimit, etc.)
+│   ├── middleware/            (Cross-cutting concerns)
+│   │   ├── __init__.py
+│   │   └── rate_limit.py      (Rate limit checking, bucket math, increments)
+│   ├── ext/                   (External service integrations)
+│   │   ├── __init__.py
+│   │   ├── search.py          (DuckDuckGo web search wrapper)
+│   │   └── [future: nemotron.py, gdelt.py]
+│   └── [future: pipeline/, clients/, prompts/, utils/]
 └── tests/
-    ├── test_ground.py
-    ├── test_hashing.py
-    ├── test_schemas.py
-    └── test_xxe.py
+    ├── unit/
+    │   ├── __init__.py
+    │   └── test_coverage.py
+    └── integration/
+        └── __init__.py
 ```
 
 ### `app/main.py`
-FastAPI app construction only. Mounts routers, CORS middleware allowlisting the extension
-origin, lifespan handler that creates one shared `httpx.AsyncClient` and one Firestore
-client and puts them on `app.state`. No business logic. Under 60 lines.
+FastAPI app construction only. Mounts routers, configures CORS, initializes the Database
+and other clients in lifespan. No business logic. Under 60 lines.
 
 ### `app/config.py`
 ```python
 class Settings(BaseSettings):
-    nemotron_api_key: str          # from mounted secret file
-    nemotron_base_url: str
-    model_small: str
-    model_large: str
-    firebase_project_id: str
-    firestore_prefix: str = "prod"
+    database_url: str              # Supabase async PostgreSQL URL
+    supabase_url: str
+    supabase_anon_key: str
+    nemotron_api_key: str          # from mounted secret file (when implemented)
     cache_ttl_hours: int = 24
-    rate_limit_per_hour: int = 60
-    global_limit_per_hour: int = 2000
-    max_paragraphs: int = 300
-    max_chars_per_paragraph: int = 4000
-    allowed_origin: str
 ```
-`pydantic-settings`, single `get_settings()` with `lru_cache`. Nothing reads `os.environ`
-anywhere else in the codebase.
+`pydantic-settings` with `get_settings()` and `lru_cache`. Nothing reads `os.environ`
+directly elsewhere.
 
 ### `app/deps.py`
-Two FastAPI dependencies.
-- `current_uid(authorization: str = Header(...)) -> str` — verifies the Firebase ID token
-  via Admin SDK, returns the uid, raises 401.
-- `enforce_rate_limit(uid: str = Depends(current_uid)) -> None` — Firestore transactional
-  counter increment against `rate_limits/{uid}/{hour_bucket}`, plus the global bucket.
-  Raises 429.
+- `set_db(database: Database)` — initialize the global DB reference in lifespan.
+- `get_db_session() -> AsyncSession` — FastAPI dependency providing an async database session.
+- `extract_user_id(token: str) -> UUID` — currently hash-based; TODO: replace with Supabase JWT.
+- `get_current_user(authorization: Header) -> UUID` — extracts Bearer token and returns user ID.
 
-### `app/routes/analyze.py`
-```python
-@router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze(req: AnalyzeRequest, uid: str = Depends(current_uid),
-                  _: None = Depends(enforce_rate_limit)) -> AnalyzeResponse
-```
-Computes `doc_hash`, checks cache, on miss calls `orchestrate.run_analysis(...)`, writes
-cache, returns. Route does no pipeline work itself — it's cache logic and delegation.
+### `app/types.py`
+Pydantic models for all request/response contracts. Currently:
+- `Article`, `CoverageRequest`, `CoverageResponse`, `RelatedSource`, `CoverageMeta`, `Omission`
+Later: `AnalyzeRequest`, `AnalyzeResponse`, `Flag`, `Claim`, etc.
 
-### `app/routes/coverage.py`
+### `app/api/coverage.py`
 ```python
 @router.post("/coverage", response_model=CoverageResponse)
-async def coverage(req: CoverageRequest, uid: str = Depends(current_uid),
-                   _: None = Depends(enforce_rate_limit)) -> CoverageResponse
+async def get_coverage(request: CoverageRequest,
+                       session: AsyncSession = Depends(get_db_session),
+                       user_id: UUID = Depends(get_current_user)) -> CoverageResponse
 ```
-Caches per `(doc_hash, claim_id)` so repeat clicks on the same claim are free.
+Checks rate limit, calls web search, transforms results, returns. Delegates to middleware
+for rate limiting.
 
-### `app/routes/health.py`
-`GET /health` → `{"status": "ok"}`. No dependencies, no auth — Cloud Run needs it to
-answer even when Firestore is down.
-
-### `app/routes/evals.py`
-`GET /eval/results` → the latest rolled-up eval JSON. Reads a static file baked into the
-image or a Firestore doc. No auth; the numbers aren't secret and judges may hit it
-directly.
-
-### `app/schemas/requests.py`
-`Paragraph`, `AnalyzeRequest`, `CoverageRequest`. All size limits expressed as
-`Field(max_length=...)` and validators, so an oversized payload is rejected by FastAPI
-before a single line of your code runs.
-
-### `app/schemas/responses.py`
-`Flag`, `Claim`, `AnalyzeMeta`, `AnalyzeResponse`, `RelatedArticle`, `Omission`,
-`CoverageResponse`. `Technique` and `Severity` as `StrEnum`.
-
-### `app/schemas/models.py`
-The shapes Nemotron is asked to return, separate from what you return to the client.
-`RawLabelBatch`, `RawClassification`, `RawVerification`. Keeping these separate means a
-model output change doesn't ripple into your public contract.
-
-### `app/pipeline/orchestrate.py`
+### `app/db/connection.py`
 ```python
-async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResponse
+class Database:
+    async def init()            # Create async engine and session factory
+    async def get_session()     # AsyncGenerator[AsyncSession, None] for dependency injection
+    async def close()           # Cleanup on shutdown
+    async def create_all()      # Create tables from ORM metadata
 ```
-The only function routes call. Sequence: resolve doc type → batch paragraphs → fan out
-labeling with `asyncio.gather` → ground → assemble. Owns the timeout budget and the
-partial-failure policy (a failed batch degrades that paragraph, it does not fail the
-request).
 
-### `app/pipeline/classify.py`
+### `app/db/models.py`
+SQLAlchemy ORM models:
+- `CachedAnalysis` — cache `/analyze` results by `doc_hash`
+- `CachedCoverage` — cache `/coverage` results by `(doc_hash, claim_id)`
+- `RateLimit` — per-user request counts by hour bucket
+- `GlobalRateLimit` — global request count by hour bucket
+
+### `app/middleware/rate_limit.py`
 ```python
-async def resolve_doc_type(section_hint: str | None, title: str,
-                           sample: list[Paragraph], ctx) -> tuple[DocType, str]
+async def check_rate_limit(session: AsyncSession, user_id: UUID) -> tuple[bool, dict]
+async def increment_rate_limit(session: AsyncSession, user_id: UUID) -> None
 ```
-Returns the type and its source. Short-circuits on `section_hint` without a model call.
+Implements fixed-window rate limiting with per-user and global hourly ceilings (100 and
+10,000 respectively). Can be replaced with sliding window later.
 
-### `app/pipeline/label.py`
+### `app/ext/search.py`
 ```python
-async def label_batch(paragraphs: list[Paragraph], doc_type: DocType,
-                      ctx) -> tuple[list[Flag], list[Claim]]
+async def search(title: str, entities: list[str], *, max_records: int, timelimit: str) -> list[Article]
 ```
-One call per batch returning both flags and claims — the merged design. Batch size around
-5 paragraphs, tune on latency. One reprompt on JSON parse failure, then give up on that
-batch and log it.
-
-### `app/pipeline/ground.py`
-```python
-def verify_quotes(flags: list[Flag], claims: list[Claim],
-                  paragraphs: dict[int, str]) -> GroundingResult
-```
-Pure function, no I/O, no model. Normalizes whitespace and smart quotes, then requires the
-quote to be a literal substring of its paragraph. Returns kept items plus a drop count and
-reasons. **The most heavily tested file in the repo** — `test_ground.py` covers curly
-apostrophes, non-breaking spaces, em dashes, wrong `paragraph_id`, and fabricated text.
-
-### `app/pipeline/verify.py`
-```python
-async def verify_claim(claim: Claim, title: str, ctx) -> CoverageResponse
-```
-Builds the GDELT query from claim entities, fetches, then one Nemotron call comparing the
-claim against the returned snippets.
-
-### `app/clients/nemotron.py`
-```python
-class NemotronClient:
-    async def complete_json(self, prompt: str, model: str,
-                            schema: type[BaseModel], *, retries: int = 2) -> BaseModel
-```
-The single choke point for model calls. Owns retries with jittered backoff, per-call
-timeout, JSON extraction, Pydantic parsing, the reprompt, and structured logging of token
-counts and latency. Nothing else in the codebase calls the model API directly.
-
-### `app/clients/gdelt.py`
-```python
-async def search(keywords: list[str], *, hours: int = 72,
-                 max_records: int = 50) -> list[RelatedArticle]
-```
-DOC API, `mode=ArtList&format=json`. Dedupes by domain so one outlet's syndication
-network doesn't fill all fifty slots.
-
-### `app/clients/store.py`
-```python
-async def get_analysis(doc_hash: str) -> AnalyzeResponse | None
-async def put_analysis(doc_hash: str, resp: AnalyzeResponse, ttl_hours: int) -> None
-async def get_coverage(doc_hash: str, claim_id: str) -> CoverageResponse | None
-async def put_coverage(doc_hash: str, claim_id: str, resp: CoverageResponse) -> None
-async def bump_rate_limit(uid: str, limit: int) -> bool
-```
-Firestore access lives only here. Collections:
-```
-{prefix}_analyses/{doc_hash}
-{prefix}_coverage/{doc_hash}_{claim_id}
-{prefix}_rate_limits/{uid}
-```
-
-### `app/prompts/*.txt`
-Plain text with `{placeholders}`, loaded at import. Prompts in files, not string literals
-in Python — three people editing prompts inside functions will produce merge conflicts all
-night.
-
-### `app/utils/hashing.py`
-```python
-def doc_hash(url: str, paragraphs: list[Paragraph]) -> str
-```
-`sha256` of normalized URL (strip query params, fragments, trailing slash) plus the joined
-normalized paragraph text. This is the cache key — changing it invalidates every cached
-demo article, so freeze it early.
-
-### `app/utils/text.py`
-`normalize_for_match()`, `batch_paragraphs()`, `sample_for_classification()`. Shared by the
-pipeline and the eval harness.
+DuckDuckGo wrapper. Filters blocked domains, extracts date from URL, returns Article objects.
+Later: GDELT client and Nemotron client go here.
 
 ---
 

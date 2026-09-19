@@ -2,8 +2,8 @@ import pytest
 from ddgs.exceptions import DDGSException
 from fastapi import HTTPException
 
-from backend.app.lib.types import Article
-from backend.app.routes import coverage
+from backend.app.types import Article
+from backend.app.api import coverage
 
 
 @pytest.mark.asyncio
