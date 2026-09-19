@@ -3,16 +3,16 @@ from time import perf_counter
 from ddgs.exceptions import DDGSException
 from fastapi import APIRouter, HTTPException
 
-from ..clients.web_search import search
-from . import coverage_type
+from backend.app.lib.helpers.web_search import search
+from backend.app.lib import types
 
 router = APIRouter()
 
-CoverageRequest = coverage_type.CoverageRequest
-CoverageResponse = coverage_type.CoverageResponse
-RelatedSource = coverage_type.RelatedSource
-Omission = coverage_type.Omission
-CoverageMeta = coverage_type.CoverageMeta
+CoverageRequest = types.CoverageRequest
+CoverageResponse = types.CoverageResponse
+RelatedSource = types.RelatedSource
+Omission = types.Omission
+CoverageMeta = types.CoverageMeta
 
 
 @router.post("/coverage", response_model=CoverageResponse)
