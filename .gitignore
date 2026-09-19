@@ -110,7 +110,6 @@ node_modules/
 coverage/
 
 # JavaScript / TypeScript build output
-lib/
 out/
 public/build/
 stats.html

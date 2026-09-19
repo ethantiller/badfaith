@@ -83,8 +83,8 @@ mount an in-page card, and then inside a Shadow DOM so the host site's CSS can't
 in or out. **This script never sees an auth token.** It asks the background worker for
 results and renders what comes back.
 
-**Background service worker** — the extension's trusted core. Owns Firebase auth, owns
-all `fetch` calls, owns the message handlers. Holds no state in module-level variables
+**Background service worker** — the extension's trusted core. Owns Supabase anonymous auth,
+owns all `fetch` calls, owns the message handlers. Holds no state in module-level variables
 because Chrome evicts idle workers; anything that must survive goes to `chrome.storage`.
 Rejects messages whose `sender.id` isn't our own extension ID.
 
@@ -93,9 +93,10 @@ page (section 7). Being a normal web page, it can use whatever component library
 keep it light.
 
 The manifest deliberately omits `externally_connectable`, so no website can message the
-extension directly. Host permissions stay narrow — five reliable sites beat fifty flaky
+extension directly. Host permissions start narrow — five reliable sites beat fifty flaky
 ones, because Readability behaves differently on every domain and a demo failure is
-fatal.
+fatal. As coverage expands, permissions can be broadened to all HTTPS sites by updating
+`host_permissions` in `wxt.config.ts` and validating extraction quality on each new domain.
 
 **Article parsing stays client-side by design.** The backend never re-fetches the URL.
 The browser already has the rendered page, including content behind a paywall the user
@@ -320,6 +321,15 @@ the Nemotron key they are project identifiers, not secrets.
 
 Real Google sign-in is out of scope. It needs `chrome.identity` plus more complex auth
 flows, and no judge scores it.
+
+---
+
+## 8. Auth (Detailed Implementation)
+
+See `backend/app/deps.py` for JWT verification and Supabase RLS integration. The backend
+verifies tokens on every request and enforces Supabase's Row-Level Security policies
+programmatically. See `extension/lib/types.ts` and `extension/entrypoints/background.ts`
+for the Supabase client integration in the extension.
 
 ---
 
