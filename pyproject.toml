@@ -8,9 +8,11 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "asyncpg>=0.30.0",
     "ddgs>=9.0.0",
     "fastapi[standard]>=0.141.1",
-    "python-dotenv>=1.2.3",
+    "greenlet>=3.0.0",
+    "pydantic-settings>=2.10.0",
     "sqlalchemy>=2.0.54",
     "uvicorn>=0.53.0",
 ]
