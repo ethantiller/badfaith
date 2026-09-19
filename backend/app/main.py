@@ -8,7 +8,7 @@ from backend.app.config import get_settings
 from backend.app.db import Database
 from backend.app.deps import set_db
 from backend.app.api.coverage import router as coverage_router
-
+from backend.app.middleware.cors import add_cors_middleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
 
     # Initialize database
-    db = Database(settings.database_url)
+    db = Database(settings.get_database_url())
     db.init()
     set_db(db)
 
@@ -30,33 +30,16 @@ async def lifespan(app: FastAPI):
     await db.close()
 
 
-def create_app() -> FastAPI:
-    """Construct and configure the FastAPI application."""
-    settings = get_settings()
-    app = FastAPI(title="badfaith", version="0.1.0", lifespan=lifespan, docs_url=None)
+settings = get_settings()
+app = FastAPI(title="badfaith", version="0.1.0", lifespan=lifespan, docs_url=None)
 
-    # CORS middleware — allow only the Chrome extension origin
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[settings.extension_origin],
-        allow_credentials=True,
-        allow_methods=["POST", "GET"],
-        allow_headers=["authorization", "content-type"],
-    )
+add_cors_middleware(app)
 
-    # Mount routers
-    app.include_router(coverage_router)
+app.include_router(coverage_router, prefix="/api/v1")
 
-    # Health check endpoint (no auth required)
-    @app.get("/health")
-    async def health():
-        return {"status": "ok"}
-
-    return app
-
-
-app = create_app()
-
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
