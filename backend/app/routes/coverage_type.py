@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from typing import Literal
+
 class CoverageRequest(BaseModel):
     doc_hash: str
     claim_id: str

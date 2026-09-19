@@ -1,5 +1,3 @@
-from typing import Literal
-
 from fastapi import APIRouter
 
 import coverage_type
