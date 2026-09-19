@@ -4,15 +4,9 @@ from ddgs.exceptions import DDGSException
 from fastapi import APIRouter, HTTPException
 
 from backend.app.lib.helpers.web_search import search
-from backend.app.lib import types
+from backend.app.lib.types import CoverageRequest, CoverageResponse, RelatedSource, Omission, CoverageMeta
 
 router = APIRouter()
-
-CoverageRequest = types.CoverageRequest
-CoverageResponse = types.CoverageResponse
-RelatedSource = types.RelatedSource
-Omission = types.Omission
-CoverageMeta = types.CoverageMeta
 
 
 @router.post(
