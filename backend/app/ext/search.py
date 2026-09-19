@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from ddgs import DDGS
 from ddgs.exceptions import DDGSException
 
-from backend.app.types import Article
+from backend.app.schemas import Article
 
 WEB_SEARCH_TIMEOUT_SECONDS = 15
 URL_DATE_PATTERN = re.compile(r"(?<!\d)(20\d{2})[/-](0[1-9]|1[0-2])[/-](0[1-9]|[12]\d|3[01])(?!\d)")

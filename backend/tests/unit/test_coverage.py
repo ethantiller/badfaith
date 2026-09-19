@@ -2,7 +2,7 @@ import pytest
 from ddgs.exceptions import DDGSException
 from fastapi import HTTPException
 
-from backend.app.types import Article
+from backend.app.schemas import Article
 from backend.app.api import coverage
 
 
