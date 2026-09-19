@@ -250,11 +250,38 @@ CREATE TABLE global_rate_limit (
 -- Indexes for fast lookups
 CREATE INDEX idx_cached_analyses_expires ON cached_analyses(expires_at);
 CREATE INDEX idx_rate_limits_hour ON rate_limits(uid, hour_bucket);
+
+-- Row-Level Security policies
+ALTER TABLE cached_analyses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cached_coverage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE global_rate_limit ENABLE ROW LEVEL SECURITY;
+
+-- Shared caches: read-only for all authenticated users, managed by backend only
+CREATE POLICY "read_shared_cache_analyses" ON cached_analyses
+  FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "read_shared_cache_coverage" ON cached_coverage
+  FOR SELECT USING (auth.role() = 'authenticated');
+
+-- Rate limits: users can only see/modify their own entries
+CREATE POLICY "rate_limits_user_isolation" ON rate_limits
+  FOR SELECT USING (uid = auth.uid());
+CREATE POLICY "rate_limits_user_update" ON rate_limits
+  FOR UPDATE USING (uid = auth.uid()) WITH CHECK (uid = auth.uid());
+
+-- Global rate limit: backend service role only
+CREATE POLICY "global_limit_backend_only" ON global_rate_limit
+  FOR ALL USING (auth.role() = 'service_role');
 ```
 
 The backend queries these tables on every request to check cache, verify rate limits,
 and write results. `doc_hash` is stable across reruns (hash of normalized URL + text),
 so a re-read of the same article serves cached results instantly.
+
+RLS policies enforce: users access only their own rate-limit counters; analysis and
+coverage caches are shared and read-only to all authenticated users; only the backend
+service role can manage cache and global rate-limit writes. This means even if a user
+grabs someone else's JWT, they can't see other users' rate limits or forge cache entries.
 
 **Security posture**, all decided:
 
