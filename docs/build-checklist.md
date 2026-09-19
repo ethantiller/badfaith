@@ -93,7 +93,8 @@ else from working if it isn't done.
 - [ ] Test `toParagraphs` on all five domains, log the paragraph count for each, fix the
       outliers before anything downstream is built
 - [ ] `lib/highlight.ts` — `applyFlags`, `clearHighlights`, `focusFlag` using `Range` and
-      `TreeWalker`. Never `innerHTML` replacement
+      `TreeWalker`. Never `innerHTML` replacement. If a quote repeats in its paragraph,
+      wrap the first occurrence
 - [ ] Shadow DOM wrapper for the hover tooltip so the host site's CSS can't touch it
 - [ ] Side panel shell — `App.tsx`, `DocTypeBadge`, `FlagList`, `FlagCard`, `ClaimList`
 - [ ] `FOCUS_FLAG` round trip: click a flag in the panel, page scrolls to it and pulses
@@ -107,9 +108,18 @@ else from working if it isn't done.
 - [ ] `eval/runners/symmetry.py` + `datasets/symmetry/build_pairs.py` — ~50 articles with
       party identities swapped, report mean delta and flip rate
 - [ ] `eval/runners/routing.py` — small vs large model agreement, latency, cost per article
-- [ ] Confirm the SemEval test split is publicly downloadable **before** building against it
-- [ ] `eval/runners/semeval_spans.py` — map their 14 techniques onto our 9, report
-      precision/recall/F1 exact and overlap
+- [ ] Download `datasets-v2.tgz` from Zenodo (zenodo.org/records/3952415, CC BY 4.0) into
+      `eval/datasets/semeval/` and confirm the train and dev gold files are in it. Test-set
+      labels are hidden, so score on train/dev only
+- [ ] `eval/runners/semeval_spans.py` — full spec in `docs/project-structure.md`:
+  - [ ] fixed-seed subset of ~50 articles; record `n`
+  - [ ] split articles into paragraphs, keeping each paragraph's start offset
+  - [ ] convert each flag's quote to article offsets (first occurrence, matched the way the
+        grounding gate matches)
+  - [ ] collapse our 16 techniques onto their 14 classes
+  - [ ] report precision/recall/F1 per technique, exact and overlap; **decide what counts
+        as overlap** and record it in `notes`
+  - [ ] disclose in `notes`: train/dev only, subset size, 2017–2019 corpus, dense labels
 - [ ] `eval/report.py` → `results/latest.json`
 - [ ] `app/routes/evals.py` — `GET /eval/results`, no auth
 - [ ] `components/EvalPage.tsx` — render the numbers live in the side panel
@@ -136,15 +146,22 @@ else from working if it isn't done.
       paragraphs, not the full article
 - [ ] `prompts/classify.txt` — one word out: `news`, `opinion`, or `other`
 - [ ] Map doc type to a severity policy. Same technique scores high in news, low in
-      opinion. Write this as an explicit table, not scattered conditionals
+      opinion. Write this as an explicit table, not scattered conditionals. The policy
+      changes `severity` only; it never removes a flag
 
 ### Span labeling + claims
 
 - [ ] `app/utils/text.py` — `batch_paragraphs()`, ~5 paragraphs per batch, tune on latency
 - [ ] `prompts/label.txt` — returns **both** flags and claims in one JSON response
-- [ ] Pin the technique enum in the prompt. List the nine allowed values explicitly and
+- [ ] Pin the technique enum in the prompt. List the sixteen allowed values explicitly and
       instruct the model to use no others
 - [ ] Require verbatim quotes in the prompt and say why — paraphrase breaks the grounding gate
+- [ ] Require **minimal-span** quotes in the prompt: only the words that carry the
+      technique, not the whole sentence. SemEval's gold spans are short, and tight quotes
+      make better highlights
+- [ ] No flag filtering in `label.py` or `orchestrate.py` — no severity or confidence
+      cutoff. Only the grounding gate removes flags; display thresholds live in the
+      extension and the eval
 - [ ] `app/pipeline/label.py` — `label_batch(paragraphs, doc_type, ctx)`
 - [ ] Emit `confidence` per flag (feeds the calibration story, costs nothing)
 - [ ] Claim extraction inside the same call: `statistic`, `attributed_quote`,
@@ -172,7 +189,8 @@ else from working if it isn't done.
 - [ ] Return kept items plus drop count and drop reasons; orchestrator puts the count in
       `meta.flags_dropped`
 - [ ] `tests/test_ground.py` — curly apostrophes, non-breaking spaces, em dashes, wrong
-      `paragraph_id`, wholly fabricated quote, empty quote, quote spanning two paragraphs
+      `paragraph_id`, wholly fabricated quote, empty quote, quote spanning two paragraphs, quote that appears twice in its paragraph
+      (first occurrence wins)
 
 ### Coverage
 

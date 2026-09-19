@@ -1,21 +1,25 @@
 // API Contract types that mirror the Python backend schemas
 import type { User, Session } from '@supabase/supabase-js';
 
-// SemEval-2021 Task 6: Propaganda Techniques Identification (14 techniques)
+// SemEval-2020 Task 11: Propaganda Techniques Identification. Covers all 14 SemEval classes;
+// whataboutism, straw_man and red_herring are one merged class in SemEval.
+// https://aclanthology.org/2020.semeval-1.186/
 export type Technique =
   | 'loaded_language'
   | 'name_calling'
   | 'repetition'
   | 'exaggeration_minimization'
-  | 'appeal_to_fear'
-  | 'appeal_to_authority'
   | 'doubt'
+  | 'appeal_to_fear'
+  | 'flag_waving'
   | 'causal_oversimplification'
-  | 'appeal_to_common_belief'
+  | 'slogans'
+  | 'appeal_to_authority'
   | 'false_dilemma'
+  | 'thought_terminating_cliche'
+  | 'whataboutism'
   | 'straw_man'
   | 'red_herring'
-  | 'whataboutism'
   | 'bandwagon';
 
 export interface Flag {

@@ -117,18 +117,48 @@ and break your eval mapping.
 
 ```
 loaded_language
+name_calling
+repetition
+exaggeration_minimization
+doubt
 appeal_to_fear
+flag_waving
+causal_oversimplification
+slogans
 appeal_to_authority
 false_dilemma
-unsupported_generalization
-misleading_statistic
-unnamed_source_as_fact
-speculation_as_fact
-guilt_by_association
+thought_terminating_cliche
+whataboutism
+straw_man
+red_herring
+bandwagon
 ```
 
-Nine is enough. SemEval has fourteen; map theirs onto yours in the eval runner rather
-than adopting all fourteen in the product.
+Sixteen values covering all fourteen SemEval-2020 Task 11 classes (PTC-SemEval20), in the
+order of the task paper's Table 1. `whataboutism`, `straw_man` and `red_herring` are one
+merged SemEval class, `false_dilemma` is its Black-and-White Fallacy, and `bandwagon`
+covers Bandwagon / Reductio ad hitlerum. The eval runner renames and collapses on the way
+in, so scoring stays many-to-one.
+
+Mapping used when scoring against SemEval (spellings as listed on the dataset card; confirm
+against the data files when the runner is built):
+
+| SemEval class | Our value(s) |
+|---|---|
+| Loaded Language | `loaded_language` |
+| Name Calling/Labeling | `name_calling` |
+| Repetition | `repetition` |
+| Exaggeration/Minimisation | `exaggeration_minimization` |
+| Doubt | `doubt` |
+| Appeal to fear-prejudice | `appeal_to_fear` |
+| Flag-Waving | `flag_waving` |
+| Causal Oversimplification | `causal_oversimplification` |
+| Slogans | `slogans` |
+| Appeal to Authority | `appeal_to_authority` |
+| Black-and-White Fallacy | `false_dilemma` |
+| Thought-terminating Clichés | `thought_terminating_cliche` |
+| Whataboutism/Straw Men/Red Herring | `whataboutism`, `straw_man`, `red_herring` |
+| Bandwagon/Reductio ad hitlerum | `bandwagon` |
 
 ---
 
@@ -233,8 +263,90 @@ Implements fixed-window rate limiting with per-user and global hourly ceilings (
 ```python
 async def search(title: str, entities: list[str], *, max_records: int, timelimit: str) -> list[Article]
 ```
-DuckDuckGo wrapper. Filters blocked domains, extracts date from URL, returns Article objects.
-Later: GDELT client and Nemotron client go here.
+One call per batch returning both flags and claims — the merged design. Batch size around
+5 paragraphs, tune on latency. One reprompt on JSON parse failure, then give up on that
+batch and log it.
+
+**Quote the minimal span.** `label.txt` tells the model to quote only the words that carry
+the technique, not the whole sentence. SemEval's gold spans are short phrases, so
+sentence-length quotes would score near zero on exact match, and short quotes also make
+better highlights.
+
+**Never hide flags in the pipeline.** Severity and confidence are recorded, not used to
+filter. `SEVERITY_POLICY` may change a flag's `severity`; the only thing that removes a flag
+is the grounding gate. Any display threshold is applied at render time in the extension,
+and the SemEval runner applies its own, so the eval always sees every grounded flag.
+
+### `app/pipeline/ground.py`
+```python
+def verify_quotes(flags: list[Flag], claims: list[Claim],
+                  paragraphs: dict[int, str]) -> GroundingResult
+```
+Pure function, no I/O, no model. Normalizes whitespace and smart quotes, then requires the
+quote to be a literal substring of its paragraph. Returns kept items plus a drop count and
+reasons. **The most heavily tested file in the repo** — `test_ground.py` covers curly
+apostrophes, non-breaking spaces, em dashes, wrong `paragraph_id`, and fabricated text.
+
+**One quote, one place.** If a quote occurs more than once in its paragraph, it refers to
+the first occurrence. `highlight.ts` and the SemEval runner use the same rule, so what the
+panel highlights and what the eval scores agree.
+
+### `app/pipeline/verify.py`
+```python
+async def verify_claim(claim: Claim, title: str, ctx) -> CoverageResponse
+```
+Builds the GDELT query from claim entities, fetches, then one Nemotron call comparing the
+claim against the returned snippets.
+
+### `app/clients/nemotron.py`
+```python
+class NemotronClient:
+    async def complete_json(self, prompt: str, model: str,
+                            schema: type[BaseModel], *, retries: int = 2) -> BaseModel
+```
+The single choke point for model calls. Owns retries with jittered backoff, per-call
+timeout, JSON extraction, Pydantic parsing, the reprompt, and structured logging of token
+counts and latency. Nothing else in the codebase calls the model API directly.
+
+### `app/clients/gdelt.py`
+```python
+async def search(keywords: list[str], *, hours: int = 72,
+                 max_records: int = 50) -> list[RelatedArticle]
+```
+DOC API, `mode=ArtList&format=json`. Dedupes by domain so one outlet's syndication
+network doesn't fill all fifty slots.
+
+### `app/clients/store.py`
+```python
+async def get_analysis(doc_hash: str) -> AnalyzeResponse | None
+async def put_analysis(doc_hash: str, resp: AnalyzeResponse, ttl_hours: int) -> None
+async def get_coverage(doc_hash: str, claim_id: str) -> CoverageResponse | None
+async def put_coverage(doc_hash: str, claim_id: str, resp: CoverageResponse) -> None
+async def bump_rate_limit(uid: str, limit: int) -> bool
+```
+Firestore access lives only here. Collections:
+```
+{prefix}_analyses/{doc_hash}
+{prefix}_coverage/{doc_hash}_{claim_id}
+{prefix}_rate_limits/{uid}
+```
+
+### `app/prompts/*.txt`
+Plain text with `{placeholders}`, loaded at import. Prompts in files, not string literals
+in Python — three people editing prompts inside functions will produce merge conflicts all
+night.
+
+### `app/utils/hashing.py`
+```python
+def doc_hash(url: str, paragraphs: list[Paragraph]) -> str
+```
+`sha256` of normalized URL (strip query params, fragments, trailing slash) plus the joined
+normalized paragraph text. This is the cache key — changing it invalidates every cached
+demo article, so freeze it early.
+
+### `app/utils/text.py`
+`normalize_for_match()`, `batch_paragraphs()`, `sample_for_classification()`. Shared by the
+pipeline and the eval harness.
 
 ---
 
@@ -337,7 +449,9 @@ export function focusFlag(paragraphId: number, quote: string): void
 ```
 Uses `Range` and `TreeWalker` to wrap the quote inside one known element. Never
 `innerHTML` replacement — that destroys event listeners the news site depends on and can
-blank the page. Tooltip content in a Shadow DOM.
+blank the page. Tooltip content in a Shadow DOM. If the quote appears more than once
+in the paragraph, wrap the first occurrence — the same rule the grounding gate and the
+SemEval runner use.
 
 ### `lib/api.ts`
 ```ts
@@ -391,9 +505,37 @@ class EvalResult:
 ```
 
 ### `runners/semeval_spans.py`
-Maps SemEval's 14 techniques onto your 9, runs the pipeline, reports exact-match and
-overlap-based precision/recall/F1 per technique. If the test split isn't publicly
-downloadable, use train/dev and say so in `notes`.
+Scores the pipeline against SemEval-2020 Task 11 (PTC-SemEval20): English news articles
+with human-labeled propaganda spans. It is the only eval scored against independent
+ground truth, which is why it belongs in the pitch. It is an eval only — nothing at
+runtime and no training depends on it.
+
+**Data.** `datasets-v2.tgz` from the task's Zenodo record
+(https://zenodo.org/records/3952415, CC BY 4.0 — cite the task overview paper), fetched
+on demand into `eval/datasets/semeval/`. Test-set gold labels are hidden, so score on
+train and dev only and say so in `notes`. Use a fixed-seed subset of about 50 articles:
+the free API tier is rate limited, and the seed keeps runs comparable. Record `n`.
+
+**How a run works.**
+1. Load each article's plain text and its gold spans, `(technique, start, end)` character
+   offsets.
+2. Split the article into paragraphs, keeping each paragraph's start offset.
+3. Call `run_analysis` directly. No HTTP, no server.
+4. Convert each flag to article offsets: the paragraph's start plus the quote's position
+   in it. This works only because quotes are verbatim. Find the quote the way the grounding
+   gate matched it (after normalization, mapped back to original offsets), and use the
+   first occurrence if it repeats.
+5. Collapse our 16 labels onto SemEval's 14 classes using the table in the technique enum
+   section.
+6. Score per technique — exact match and overlap — as precision, recall and F1.
+
+**Open item.** Decide what counts as overlap (any overlap, or a minimum fraction of the
+gold span) when building the runner, and record the choice in `notes`.
+
+**Caveats to disclose in `notes`.** The corpus is dense — about 17 labeled spans per
+article — so recall will be limited for a pipeline that flags conservatively. The articles
+date from mid-2017 to early 2019 and come from 13 propaganda and 36 non-propaganda outlets.
+Nothing here is tuned on the data. Only train/dev were scored, on a subset of `n` articles.
 
 ### `runners/symmetry.py`
 Loads `pairs.jsonl` (article, party-swapped article), runs both, reports mean absolute

@@ -173,7 +173,10 @@ same labels.
 **Stage 2 — Span labeler (large model).** Fans out across paragraph batches concurrently
 with `asyncio.gather`. For each batch, returns technique labels with the exact quote and
 an explanation. Batching rather than per-paragraph calls keeps latency and token cost
-down while preserving enough local context to judge tone.
+down while preserving enough local context to judge tone. Quotes are the minimal words
+that carry the technique, not whole sentences, so highlights are tight and spans line up
+with SemEval's gold spans. The pipeline never filters flags by severity or confidence;
+only the grounding gate removes one.
 
 **Stage 3 — Claim extractor (large model).** Pulls checkable assertions — statistics,
 attributed quotes, dates — each anchored to a paragraph and quote. Output feeds stage 4
@@ -351,6 +354,13 @@ eval/
 The four Tier 1 evals — SemEval span F1, counterfactual symmetry, grounding/fabrication
 rate, and small-vs-large model routing — all emit the same result envelope so the report
 page renders them uniformly.
+
+**SemEval eval.** The span-F1 eval scores against SemEval-2020 Task 11 (PTC-SemEval20),
+English news with human-labeled propaganda spans — the one eval graded against independent
+ground truth. Our sixteen techniques map many-to-one onto its fourteen classes. Test
+labels are hidden, so it runs on train and dev only, on a fixed-seed subset of about 50
+articles fetched from Zenodo (CC BY 4.0). The run steps, mapping table and disclosures
+are in `project-structure.md` under `runners/semeval_spans.py`.
 
 Output surfaces on an **eval page inside the side panel**, reading from
 `GET /eval/results`. Judges clicking through live numbers beats a screenshot in slides.
