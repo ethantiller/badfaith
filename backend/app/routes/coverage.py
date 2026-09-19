@@ -1,44 +1,16 @@
 from typing import Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel
 
+import coverage_type
 
 router = APIRouter()
 
-
-class CoverageRequest(BaseModel):
-    doc_hash: str
-    claim_id: str
-    quote: str
-    entities: list[str]
-    title: str
-
-
-class RelatedSource(BaseModel):
-    outlet: str
-    url: str
-    headline: str
-    snippet: str
-    seendate: str
-
-
-class Omission(BaseModel):
-    summary: str
-    corroborating_urls: list[str]
-
-
-class CoverageMeta(BaseModel):
-    sources_queried: int
-    latency_ms: int
-
-
-class CoverageResponse(BaseModel):
-    claim_id: str
-    status: Literal["supported", "contradicted", "unverified"]
-    related: list[RelatedSource]
-    omissions: list[Omission]
-    meta: CoverageMeta
+CoverageRequest = coverage_type.CoverageRequest
+CoverageResponse = coverage_type.CoverageResponse
+RelatedSource = coverage_type.RelatedSource
+Omission = coverage_type.Omission
+CoverageMeta = coverage_type.CoverageMeta
 
 
 @router.post("/coverage", response_model=CoverageResponse)
