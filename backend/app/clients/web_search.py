@@ -119,7 +119,6 @@ async def search(
 			break
 	return articles
 
-
 async def main() -> None:
 	try:
 		results = await search(

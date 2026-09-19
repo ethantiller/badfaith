@@ -1,6 +1,10 @@
-from fastapi import APIRouter
+from time import perf_counter
 
-import coverage_type
+from ddgs.exceptions import DDGSException
+from fastapi import APIRouter, HTTPException
+
+from ..clients.web_search import search
+from . import coverage_type
 
 router = APIRouter()
 
@@ -16,10 +20,48 @@ async def get_coverage(request: CoverageRequest) -> CoverageResponse:
     """
     Endpoint to retrieve coverage information for a claim.
     """
+    started_at = perf_counter()
+    try:
+        articles = await search(
+            title=request.title,
+            entities=request.entities,
+            max_records=50,
+            timelimit="m",
+        )
+    except DDGSException as exc:
+        if "no results found" in str(exc).lower():
+            raise HTTPException(
+                status_code=404,
+                detail="No related news articles were found.",
+            ) from exc
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+
+    if not articles:
+        raise HTTPException(
+            status_code=404,
+            detail="No related news articles were found.",
+        )
+
+    related = [
+        RelatedSource(
+            outlet=article.outlet,
+            url=article.url,
+            headline=article.headline,
+            snippet=article.snippet,
+            seendate=article.seendate,
+        )
+        for article in articles
+    ]
+
     return CoverageResponse(
         claim_id=request.claim_id,
         status="unverified",
-        related=[],
+        related=related,
         omissions=[],
-        meta=CoverageMeta(sources_queried=0, latency_ms=0),
+        meta=CoverageMeta(
+            sources_queried=len(related),
+            latency_ms=round((perf_counter() - started_at) * 1000),
+        ),
     )
