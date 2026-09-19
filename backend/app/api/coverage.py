@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.ext.search import search
-from backend.app.schemas import CoverageRequest, CoverageResponse, VerificationStatus, RelatedSource, Omission, CoverageMeta
+from backend.app.types import CoverageRequest, CoverageResponse, VerificationStatus, RelatedSource, Omission, CoverageMeta
 from backend.app.middleware.rate_limit import check_rate_limit, increment_rate_limit
 from backend.app.deps import get_db_session
 from backend.app.ext.supabase import get_current_user
