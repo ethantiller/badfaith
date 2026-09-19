@@ -374,14 +374,16 @@ extension/
 │   ├── DocTypeBadge.tsx
 │   └── EvalPage.tsx
 ├── lib/
-│   ├── types.ts
-│   ├── messaging.ts
-│   ├── api.ts
-│   ├── auth.ts
-│   ├── extract.ts
-│   ├── paragraphs.ts
-│   ├── highlight.ts
-│   └── metadata.ts
+│   ├── types.ts (API + auth types)
+│   ├── auth.ts (Supabase email auth)
+│   ├── api_helpers.ts (token refresh, error handling)
+│   ├── analyze.ts (POST /analyze)
+│   ├── coverage.ts (POST /coverage)
+│   ├── extract.ts (Readability)
+│   ├── paragraphs.ts (article → paragraphs)
+│   ├── highlight.ts (apply flags to DOM)
+│   ├── metadata.ts (detect section)
+│   └── messaging.ts (message types)
 └── assets/
 ```
 
@@ -453,19 +455,14 @@ Uses `Range` and `TreeWalker` to wrap the quote inside one known element. Never
 `innerHTML` replacement — that destroys event listeners the news site depends on and can
 blank the page. Tooltip content in a Shadow DOM.
 
-### `lib/api.ts`
-```ts
-export async function postAnalyze(body: AnalyzeRequest): Promise<AnalyzeResponse>
-export async function postCoverage(body: CoverageRequest): Promise<CoverageResponse>
-```
-Background-only. Reads base URL from `import.meta.env.WXT_API_BASE`.
+### `lib/api_helpers.ts`
+Shared HTTP utilities for all API calls. Exports: `ApiError`, `makeAuthenticatedRequest<T>()` (handles 401 refresh+retry), `buildHeaders()`, `generateRequestId()`, `getErrorMessage()`. Reads base URL from `import.meta.env.API_BASE`.
+
+### `lib/analyze.ts` and `lib/coverage.ts`
+Background-only API clients. Exports: `sendAnalyzeRequest(request)` and `sendCoverageRequest(request)`. Both automatically get the token from Supabase and handle 401 errors with token refresh and retry.
 
 ### `lib/auth.ts`
-```ts
-export async function getIdToken(): Promise<string>
-```
-Imports from `firebase/auth/web-extension`. Anonymous sign-in on first call, SDK handles
-refresh. Background-only.
+Supabase email auth with `chrome.storage.local` persistence. Exports: `signUp()`, `signIn()`, `signOut()`, `resetPassword()`, `updatePassword()`, `getIdToken()`, `getSession()`, `refreshSession()`, `initAuth()`. Tokens persist across browser restarts and auto-refresh in the background. Background-only.
 
 ---
 
