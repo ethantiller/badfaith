@@ -205,7 +205,7 @@ and other clients in lifespan. No business logic. Under 60 lines.
 ### `app/config.py`
 ```python
 class Settings(BaseSettings):
-    database_url: str              # Supabase async PostgreSQL URL
+    DATABASE_INSTANCE_STRING: str              # Supabase async PostgreSQL URL
     supabase_url: str
     supabase_anon_key: str
     nemotron_api_key: str          # from mounted secret file (when implemented)

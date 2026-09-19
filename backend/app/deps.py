@@ -7,10 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db import Database
 
-db = None
+db: Database | None = None
 
 
-def set_db(database: Database):
+def set_db(database: Database | None) -> None:
     global db
     db = database
 

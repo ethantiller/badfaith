@@ -3,23 +3,19 @@ import logging
 import random
 import re
 import time
-from pathlib import Path
 from typing import TypeVar
 
 import httpx
 from pydantic import BaseModel, ValidationError
-from dotenv import load_dotenv
-import os
 
-load_dotenv()
+from backend.app.config import get_settings, require_setting
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
-BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-MODEL_LARGE = os.getenv("NVIDIA_MODEL_LARGE", "nvidia/nemotron-3-super-120b-a12b")
-MODEL_SMALL = os.getenv("NVIDIA_MODEL_SMALL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
+MODEL_LARGE = get_settings().nvidia_model_large
+MODEL_SMALL = get_settings().nvidia_model_small
 
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -35,11 +31,7 @@ class NemotronError(Exception):
 
 
 def _load_api_key() -> str:
-    """Read NVIDIA_API_KEY from the repo-root .env only. Temporary until config.py exists."""
-    key = os.getenv("NVIDIA_API_KEY")
-    if not key:
-        raise RuntimeError("NVIDIA_API_KEY is not set in the environment")
-    return key
+    return require_setting(get_settings().nvidia_api_key, "NVIDIA_API_KEY")
 
 
 class NemotronClient:
@@ -51,6 +43,7 @@ class NemotronClient:
         self._http = http
         # Pass api_key explicitly to override, e.g. when read from a mounted secret file.
         self._api_key = (api_key or _load_api_key()).strip()
+        self._base_url = get_settings().nvidia_base_url.rstrip("/")
         self._timeout_s = timeout_s
 
     async def complete_json(
@@ -101,7 +94,7 @@ class NemotronClient:
             started = time.perf_counter()
             try:
                 resp = await self._http.post(
-                    f"{BASE_URL}/chat/completions",
+                    f"{self._base_url}/chat/completions",
                     json=payload,
                     headers=headers,
                     timeout=self._timeout_s,
