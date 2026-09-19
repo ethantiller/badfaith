@@ -29,9 +29,17 @@ class Technique(StrEnum):
 
 
 class Severity(StrEnum):
+    """Flag severity level."""
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+
+class VerificationStatus(StrEnum):
+    """Claim verification status from /coverage."""
+    SUPPORTED = "supported"
+    CONTRADICTED = "contradicted"
+    UNVERIFIED = "unverified"
 
 
 class DocType(StrEnum):
@@ -89,7 +97,7 @@ class CoverageMeta(BaseModel):
 
 class CoverageResponse(BaseModel):
     claim_id: str
-    status: Severity  # "supported", "contradicted", "unverified"
+    status: VerificationStatus
     related: list[RelatedSource]
     omissions: list[Omission]
     meta: CoverageMeta

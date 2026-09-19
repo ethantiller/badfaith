@@ -7,18 +7,19 @@ from pathlib import Path
 from typing import TypeVar
 
 import httpx
-from dotenv import dotenv_values
 from pydantic import BaseModel, ValidationError
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
-BASE_URL = "https://integrate.api.nvidia.com/v1"
-MODEL_LARGE = "nvidia/nemotron-3-super-120b-a12b"
-MODEL_SMALL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
-
-_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"  # repo root
+BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+MODEL_LARGE = os.getenv("NVIDIA_MODEL_LARGE", "nvidia/nemotron-3-super-120b-a12b")
+MODEL_SMALL = os.getenv("NVIDIA_MODEL_SMALL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
 
 _RETRY_STATUS = {429, 500, 502, 503, 504}
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -35,9 +36,9 @@ class NemotronError(Exception):
 
 def _load_api_key() -> str:
     """Read NVIDIA_API_KEY from the repo-root .env only. Temporary until config.py exists."""
-    key = dotenv_values(_ENV_FILE).get("NVIDIA_API_KEY")
+    key = os.getenv("NVIDIA_API_KEY")
     if not key:
-        raise RuntimeError(f"NVIDIA_API_KEY is not set in {_ENV_FILE}")
+        raise RuntimeError("NVIDIA_API_KEY is not set in the environment")
     return key
 
 
