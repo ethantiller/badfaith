@@ -121,8 +121,8 @@ async def search(
 
 if __name__ == "__main__":
 	test_result = asyncio.run(search(
-		title="University of Pittsburg",
-		entities=["Steelers", "PNC", "Kraft Heinz"],
+		title="climate change",
+		entities=[],
 		max_records=50,
 		timespan="3months",
 	))

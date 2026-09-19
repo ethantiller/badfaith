@@ -6,6 +6,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ddgs import DDGS
+from ddgs.exceptions import DDGSException
 
 from .web_search_types import Article
 
@@ -81,22 +82,27 @@ async def search(
 	title: str,
 	entities: Sequence[str],
 	max_records: int = 50,
+	timelimit: str | None = "m",
 	searcher: Any | None = None,
 ) -> list[Article]:
 	"""Search DuckDuckGo for articles related to a claim.
 
-	The installed duckduckgo-search package exposes synchronous DDGS. Run it in a
-	worker thread so it does not block FastAPI's event loop.
+	The ddgs package exposes synchronous DDGS. Run it in a worker thread so it does
+	not block FastAPI's event loop.
 	"""
 	if not 1 <= max_records <= 50:
 		raise ValueError("max_records must be between 1 and 50")
+	if timelimit not in {None, "d", "w", "m", "y"}:
+		raise ValueError("timelimit must be None, 'd', 'w', 'm', or 'y'")
 
 	query = build_query(title, entities)
 	request_searcher = searcher or DDGS(timeout=WEB_SEARCH_TIMEOUT_SECONDS)
+	candidate_limit = min(max_records * 3, 50)
 	results = await asyncio.to_thread(
-		request_searcher.text,
+		request_searcher.news,
 		query,
-		max_results=max_records,
+		max_results=candidate_limit,
+		timelimit=timelimit,
 	)
 	articles: list[Article] = []
 	seen_domains: set[str] = set()
@@ -109,15 +115,27 @@ async def search(
 			continue
 		seen_domains.add(domain)
 		articles.append(article)
+		if len(articles) >= max_records:
+			break
 	return articles
 
 
 async def main() -> None:
-	results = await search(
-		title="University of Pittsburg",
-		entities=["Steelers", "PNC", "Kraft Heinz"],
-		max_records=20,
-	)
+	try:
+		results = await search(
+		title="climate change",
+		entities=[],
+		max_records=50,
+			timelimit="y",
+)
+	except DDGSException as exc:
+		print(f"DuckDuckGo returned no results or rejected the request: {exc}")
+		return
+
+	if not results:
+		print("No usable news results found.")
+		return
+
 	for article in results:
 		print(f"- {article.headline} ({article.url})")
 
