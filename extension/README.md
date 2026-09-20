@@ -10,14 +10,30 @@ only after the user has asked for it. On an ordinary page the extension renders 
 
 ```bash
 make install        # npm install
-cp .env.example .env
 ```
 
-Fill in `.env`. Vite only exposes `VITE_`-prefixed variables, and the Supabase URL and
-anon key are project identifiers rather than secrets, so they ship inside the bundle by
-design. `VITE_API_BASE` must include the scheme and point at a backend serving
-`POST /api/v1/analyze`. There is no mock any more, so a route that is not up yet shows
-as a 404 in the badge.
+Configuration comes from the **repo root `.env`** — the same file the backend reads, so
+there is nothing to fill in here. Vite only exposes `VITE_`-prefixed variables, so
+`vite.config.ts` copies an explicit allowlist of root keys onto the names the source
+uses:
+
+| Root `.env` | Bundle |
+| --- | --- |
+| `SUPABASE_URL` | `import.meta.env.VITE_SUPABASE_URL` |
+| `SUPABASE_KEY` | `import.meta.env.VITE_SUPABASE_ANON_KEY` |
+| `API_BASE` | `import.meta.env.VITE_API_BASE` |
+
+Only those three cross over. The rest of the root `.env` — the Nemotron key, the
+database password — never reaches the bundle. The Supabase URL and anon key are project
+identifiers rather than secrets, so they ship inside the extension by design.
+
+`API_BASE` must include the scheme (`http://localhost:8000`, not `0.0.0.0:8000`) and
+point at a backend serving `POST /api/v1/analyze`. There is no mock any more, so a route
+that is not up yet shows as a 404 in the badge. A missing value prints a warning at
+build time rather than failing silently.
+
+To override the root for one machine, create an `extension/.env` with the `VITE_`-named
+keys; see `.env.example`. Anything set there wins over the root file.
 
 ## Build
 
