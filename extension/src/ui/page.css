@@ -1,5 +1,7 @@
 /* Shared by the popup and the password-reset tab. Same tokens as the injected UI,
-   so the extension's own screens and the in-page controls read as one thing. */
+   so the extension's own screens and the in-page controls read as one thing: the
+   serif for names, the sans for everything you act on, and one ultramarine that
+   answers the pointer with light. */
 
 * {
   box-sizing: border-box;
@@ -15,27 +17,62 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The popup opens with the window, so the whole panel arrives as one movement
+   rather than each part announcing itself. */
 .bf-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 18px;
+  padding: 20px;
+  animation: bf-page-in var(--bf-base) var(--bf-ease) both;
+}
+
+@keyframes bf-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 .bf-popup {
+  position: relative;
   width: 340px;
+  overflow: hidden;
+}
+
+/* A wash of the accent behind the top of the panel: the lamp the rest of the UI is
+   lit by, at its source. */
+.bf-popup::before {
+  content: '';
+  position: absolute;
+  top: -70px;
+  right: -40px;
+  left: -40px;
+  height: 160px;
+  background:
+    radial-gradient(52% 100% at 18% 0, var(--bf-glow-far), transparent 68%),
+    radial-gradient(70% 100% at 76% 8%, var(--bf-glow-near), transparent 72%);
+  pointer-events: none;
+}
+
+.bf-popup > * {
+  position: relative;
 }
 
 .bf-tab {
   max-width: 420px;
   margin: 48px auto;
+  background: var(--bf-surface);
   border: 1px solid var(--bf-line);
   border-radius: var(--bf-radius);
+  box-shadow: var(--bf-shadow);
 }
+
+/* --- Brand --- */
 
 .bf-brand {
   display: flex;
-  gap: 9px;
+  gap: 10px;
   align-items: center;
 }
 
@@ -44,12 +81,13 @@ body {
   height: 9px;
   background: var(--bf-accent);
   border-radius: 50%;
+  box-shadow: 0 0 0 5px var(--bf-glow-ring);
 }
 
 .bf-brand h1 {
   margin: 0;
-  font: 650 15px/1.2 var(--bf-font);
-  letter-spacing: -0.01em;
+  font: 400 19px/1.2 var(--bf-display);
+  letter-spacing: -0.005em;
 }
 
 .bf-lede {
@@ -57,16 +95,18 @@ body {
   color: var(--bf-text-dim);
 }
 
+/* --- Form --- */
+
 .bf-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 13px;
 }
 
 .bf-field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .bf-field label {
@@ -76,64 +116,202 @@ body {
 .bf-field input[type='email'],
 .bf-field input[type='password'] {
   width: 100%;
-  padding: 8px 10px;
+  padding: 9px 11px;
   font: 400 13px/1.4 var(--bf-font);
   color: var(--bf-text);
-  background: var(--bf-surface);
+  background: var(--bf-surface-sunken);
   border: 1px solid var(--bf-line);
   border-radius: var(--bf-radius-sm);
+  transition:
+    border-color var(--bf-base) var(--bf-ease),
+    background-color var(--bf-base) var(--bf-ease),
+    box-shadow var(--bf-base) var(--bf-ease);
 }
 
-.bf-field input:focus-visible,
-button:focus-visible,
-a:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--bf-accent);
-  outline-offset: 1px;
+.bf-field input[type='email']:hover,
+.bf-field input[type='password']:hover {
+  border-color: var(--bf-accent-line);
+}
+
+/* The focus ring blooms rather than snapping on, and replaces the outline so the
+   field has one focus treatment, not two. */
+.bf-field input[type='email']:focus,
+.bf-field input[type='password']:focus {
+  outline: none;
+  background: var(--bf-surface);
+  border-color: var(--bf-accent);
+  box-shadow: 0 0 0 4px var(--bf-glow-ring);
 }
 
 .bf-check {
   display: flex;
-  gap: 8px;
+  gap: 9px;
   align-items: flex-start;
   color: var(--bf-text-dim);
   cursor: pointer;
+  transition: color var(--bf-fast) var(--bf-ease);
+}
+
+.bf-check:hover {
+  color: var(--bf-text);
 }
 
 .bf-check input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 15px;
+  height: 15px;
   margin: 2px 0 0;
-  accent-color: var(--bf-accent);
+  background: var(--bf-surface-sunken);
+  border: 1px solid var(--bf-line);
+  border-radius: var(--bf-radius-xs);
+  cursor: pointer;
+  transition:
+    background-color var(--bf-fast) var(--bf-ease),
+    border-color var(--bf-fast) var(--bf-ease),
+    box-shadow var(--bf-base) var(--bf-ease);
 }
 
+/* The tick is drawn on, in the direction a hand draws it. */
+.bf-check input::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--bf-on-accent);
+  border-width: 0 1.75px 1.75px 0;
+  transform: rotate(45deg) scale(0.4);
+  opacity: 0;
+  transition:
+    transform var(--bf-base) var(--bf-spring),
+    opacity var(--bf-fast) var(--bf-ease);
+}
+
+.bf-check input:checked {
+  background: var(--bf-accent);
+  border-color: var(--bf-accent);
+}
+
+.bf-check input:checked::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+.bf-check:hover input {
+  border-color: var(--bf-accent-line);
+  box-shadow: 0 0 0 4px var(--bf-glow-ring);
+}
+
+/* --- Buttons --- */
+
 .bf-submit {
+  position: relative;
   display: inline-flex;
-  gap: 8px;
+  gap: 9px;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  padding: 0 14px;
+  min-height: 38px;
+  padding: 0 16px;
   font: 500 13px/1.3 var(--bf-font);
   color: var(--bf-on-accent);
   background: var(--bf-accent);
   border: 1px solid transparent;
   border-radius: var(--bf-radius-sm);
   cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    transform var(--bf-base) var(--bf-spring),
+    box-shadow var(--bf-base) var(--bf-ease),
+    background-color var(--bf-base) var(--bf-ease);
+}
+
+/* The light the pointer carries, over the accent rather than under it. */
+.bf-submit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(
+    120px circle at var(--bf-mx, 50%) var(--bf-my, 50%),
+    rgba(255, 255, 255, 0.24),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity var(--bf-base) var(--bf-ease);
+}
+
+.bf-submit:hover:not(:disabled) {
+  background: var(--bf-accent-strong);
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 4px var(--bf-glow-ring),
+    0 10px 24px -8px var(--bf-glow-far);
+}
+
+.bf-submit:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.bf-submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+  transition-duration: var(--bf-fast);
 }
 
 .bf-submit:disabled {
   cursor: default;
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .bf-secondary {
-  min-height: 34px;
-  padding: 0 14px;
+  position: relative;
+  min-height: 38px;
+  padding: 0 16px;
   font: 500 13px/1.3 var(--bf-font);
   color: var(--bf-text);
   background: var(--bf-surface);
   border: 1px solid var(--bf-line);
   border-radius: var(--bf-radius-sm);
   cursor: pointer;
+  isolation: isolate;
+  transition:
+    color var(--bf-base) var(--bf-ease),
+    border-color var(--bf-base) var(--bf-ease),
+    box-shadow var(--bf-base) var(--bf-ease);
+}
+
+.bf-secondary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(
+    140px circle at var(--bf-mx, 50%) var(--bf-my, 50%),
+    var(--bf-glow-near),
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity var(--bf-base) var(--bf-ease);
+}
+
+.bf-secondary:hover:not(:disabled) {
+  color: var(--bf-accent);
+  border-color: var(--bf-accent-line);
+  box-shadow: 0 0 0 4px var(--bf-glow-ring);
+}
+
+.bf-secondary:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.bf-secondary:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .bf-links {
@@ -141,13 +319,13 @@ input:focus-visible {
   gap: 14px;
   align-items: center;
   justify-content: space-between;
-  padding-top: 2px;
-  border-top: 1px solid var(--bf-line);
+  padding-top: 13px;
   margin-top: 2px;
-  padding-top: 12px;
+  border-top: 1px solid var(--bf-line);
 }
 
 .bf-link {
+  position: relative;
   padding: 0;
   font: 400 12px/1.4 var(--bf-font);
   color: var(--bf-accent);
@@ -156,12 +334,32 @@ input:focus-visible {
   cursor: pointer;
 }
 
+.bf-link::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -2px;
+  left: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform var(--bf-base) var(--bf-ease);
+}
+
+.bf-link:hover::after {
+  transform: scaleX(1);
+}
+
+/* --- Messages --- */
+
 .bf-notice {
   margin: 0;
-  padding: 9px 11px;
+  padding: 10px 12px;
   color: var(--bf-text);
   background: var(--bf-accent-soft);
-  border-radius: var(--bf-radius-sm);
+  border-left: 2px solid var(--bf-accent);
+  border-radius: 0 var(--bf-radius-sm) var(--bf-radius-sm) 0;
 }
 
 .bf-error {
@@ -169,11 +367,13 @@ input:focus-visible {
   color: var(--bf-danger);
 }
 
+/* --- This page --- */
+
 .bf-page-state {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-bottom: 16px;
+  gap: 11px;
+  padding-bottom: 17px;
   border-bottom: 1px solid var(--bf-line);
 }
 
@@ -181,7 +381,7 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 11px 12px;
+  padding: 11px 13px;
   background: var(--bf-surface-sunken);
   border-radius: var(--bf-radius-sm);
 }
@@ -196,12 +396,13 @@ input:focus-visible {
 }
 
 .bf-spin {
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
   border-top-color: currentColor;
   border-radius: 50%;
-  animation: bf-page-spin 700ms linear infinite;
+  animation: bf-page-spin 780ms cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite;
 }
 
 @keyframes bf-page-spin {
@@ -210,8 +411,26 @@ input:focus-visible {
   }
 }
 
+/* --- Shared --- */
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--bf-accent);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  /* Still reports that a request is open; it just turns more evenly. */
   .bf-spin {
-    animation: none;
+    animation: bf-page-spin 1.4s linear infinite !important;
   }
 }

@@ -11,11 +11,13 @@ import {
   docTypeSourceLabel,
   plural,
 } from './labels';
-import { button, el } from './dom';
+import { button, el, glowable } from './dom';
 
 export interface CardHandlers {
   onClose(): void;
   onFlagClick(id: string): void;
+  /** The pointer entered a flag's row, or left every row (null). */
+  onFlagHover(id: string | null): void;
   onToggleHighlights(visible: boolean): void;
   onClear(): void;
 }
@@ -24,6 +26,8 @@ export interface CardView {
   element: HTMLElement;
   render(result: AnalyzeResponse): void;
   setHighlightsVisible(visible: boolean): void;
+  /** Lights a row because the pointer is on that phrase in the article. */
+  setHotFlag(id: string | null): void;
 }
 
 function section(title: string, ...body: Node[]): HTMLElement {
@@ -63,7 +67,12 @@ function tally(flags: Flag[]): HTMLElement {
   return el('dl', { className: 'bf-tally', children: rows });
 }
 
-function flagRow(flag: Flag, id: string, onClick: (id: string) => void): HTMLElement {
+function flagRow(
+  flag: Flag,
+  id: string,
+  onClick: (id: string) => void,
+  onHover: (id: string | null) => void,
+): HTMLElement {
   const head = el('span', {
     className: 'bf-row-technique',
     children: [
@@ -74,6 +83,7 @@ function flagRow(flag: Flag, id: string, onClick: (id: string) => void): HTMLEle
 
   const row = button({
     className: 'bf-row',
+    attrs: { 'data-flag-id': id },
     onClick: () => onClick(id),
     children: [
       // The list is in reading order, so the paragraph number is information.
@@ -85,11 +95,18 @@ function flagRow(flag: Flag, id: string, onClick: (id: string) => void): HTMLEle
     ],
   });
 
-  return el('li', { children: [row] });
+  // Hovering the row lights the phrase in the article, and hovering the phrase
+  // lights this row: one list, one page, one gesture.
+  row.addEventListener('pointerenter', () => onHover(id));
+  row.addEventListener('pointerleave', () => onHover(null));
+  row.addEventListener('focus', () => onHover(id));
+  row.addEventListener('blur', () => onHover(null));
+
+  return el('li', { children: [glowable(row)] });
 }
 
 function claimRow(claim: Claim): HTMLElement {
-  const verify = button({ className: 'bf-ghost-button', text: 'Verify' });
+  const verify = glowable(button({ className: 'bf-ghost-button', children: ['Verify'] }));
   verify.disabled = true;
   verify.title = 'Coming soon';
 
@@ -156,7 +173,7 @@ export function createCard(handlers: CardHandlers): CardView {
     const list = el('ul', {
       className: 'bf-list',
       children: result.flags.map((flag, index) =>
-        flagRow(flag, flagId(flag, index), handlers.onFlagClick),
+        flagRow(flag, flagId(flag, index), handlers.onFlagClick, handlers.onFlagHover),
       ),
     });
 
@@ -198,6 +215,13 @@ export function createCard(handlers: CardHandlers): CardView {
     render,
     setHighlightsVisible(visible: boolean) {
       toggle.checked = visible;
+    },
+    setHotFlag(id: string | null) {
+      for (const row of body.querySelectorAll('.bf-row[data-hot]')) {
+        row.removeAttribute('data-hot');
+      }
+      if (!id) return;
+      body.querySelector(`.bf-row[data-flag-id="${CSS.escape(id)}"]`)?.setAttribute('data-hot', '');
     },
   };
 }

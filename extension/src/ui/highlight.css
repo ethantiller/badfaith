@@ -3,73 +3,144 @@
    [data-badfaith] so nothing leaks onto the site, and written as
    `html body span[...]` with !important so site CSS cannot quietly win.
    `color` is never set: the article keeps its own text color on both light and
-   dark pages, and the highlight reads as a wash plus an underline. */
+   dark pages, and the highlight reads as a wash plus a drawn underline.
 
-@keyframes bf-sweep {
-  from {
-    background-position: -110% 0;
-  }
-  to {
-    background-position: 210% 0;
-  }
-}
-
-@keyframes bf-pulse {
-  0%,
-  100% {
-    box-shadow: inset 0 -1.5px 0 0 rgba(47, 109, 180, 0.55);
-  }
-  50% {
-    box-shadow:
-      inset 0 -1.5px 0 0 rgba(47, 109, 180, 0.95),
-      0 0 0 3px rgba(47, 109, 180, 0.28);
-  }
-}
+   A highlight is a highlighter stroke, so it is drawn once — left to right, in
+   reading order, the moment the analysis lands — and then holds still. Nothing on
+   the page animates on its own after that. The light comes back when the reader
+   asks for it, by putting the pointer on a phrase or on its row in the report. */
 
 html body span[data-badfaith='flag'] {
-  --bf-hl: 47, 109, 180;
-  --bf-hl-a: 0.18;
+  /* Ultramarine, matching the panels. `--bf-boost` is how hover and the report's
+     row hover raise the same ink instead of introducing a second colour. */
+  --bf-hl: 42, 77, 192;
+  --bf-hl-a: 0.16;
+  --bf-boost: 1;
+  --bf-hl-line: 0.42;
+
   color: inherit !important;
   background-color: transparent !important;
   background-image: linear-gradient(
-    100deg,
-    rgba(var(--bf-hl), 0) 0%,
-    rgba(var(--bf-hl), var(--bf-hl-a)) 28%,
-    rgba(var(--bf-hl), calc(var(--bf-hl-a) * 2.1)) 50%,
-    rgba(var(--bf-hl), var(--bf-hl-a)) 72%,
-    rgba(var(--bf-hl), 0) 100%
+    to right,
+    rgba(var(--bf-hl), calc(var(--bf-hl-a) * var(--bf-boost))) 0%,
+    rgba(var(--bf-hl), calc(var(--bf-hl-a) * var(--bf-boost) * 1.35)) 55%,
+    rgba(var(--bf-hl), calc(var(--bf-hl-a) * var(--bf-boost))) 100%
   ) !important;
   background-repeat: no-repeat !important;
-  background-size: 220% 100% !important;
-  animation: bf-sweep 3.6s linear infinite !important;
-  box-shadow: inset 0 -1.5px 0 0 rgba(var(--bf-hl), 0.55) !important;
-  border-radius: 2px !important;
+  background-position: 0 0 !important;
+  /* No !important on these two: an important author declaration outranks the
+     animation origin, which would stop the reveal and the found-bloom below from
+     ever painting. The selector is specific enough on its own. */
+  background-size: 100% 100%;
+  box-shadow: inset 0 -1.5px 0 0 rgba(var(--bf-hl), var(--bf-hl-line));
+  border-radius: 3px !important;
   padding: 0 !important;
   margin: 0 !important;
   text-decoration: inherit !important;
   cursor: help !important;
+  transition:
+    background-image 240ms cubic-bezier(0.22, 0.61, 0.25, 1),
+    box-shadow 240ms cubic-bezier(0.22, 0.61, 0.25, 1) !important;
+}
+
+/* On a dark article the same pigment sinks into the page, so it is lifted and given
+   more body. The severity steps keep their proportions. */
+@media (prefers-color-scheme: dark) {
+  html body span[data-badfaith='flag'] {
+    --bf-hl: 138, 165, 255 !important;
+    --bf-hl-line: 0.6 !important;
+  }
 }
 
 /* Severity modulates intensity, never hue: this reports a technique, not a verdict. */
 html body span[data-badfaith='flag'][data-bf-severity='low'] {
-  --bf-hl-a: 0.12 !important;
+  --bf-hl-a: 0.11 !important;
 }
 html body span[data-badfaith='flag'][data-bf-severity='medium'] {
-  --bf-hl-a: 0.18 !important;
+  --bf-hl-a: 0.17 !important;
 }
 html body span[data-badfaith='flag'][data-bf-severity='high'] {
-  --bf-hl-a: 0.26 !important;
+  --bf-hl-a: 0.25 !important;
+}
+
+/* Same specificity as the steps above, so these have to follow them. */
+@media (prefers-color-scheme: dark) {
+  html body span[data-badfaith='flag'][data-bf-severity='low'] {
+    --bf-hl-a: 0.16 !important;
+  }
+  html body span[data-badfaith='flag'][data-bf-severity='medium'] {
+    --bf-hl-a: 0.24 !important;
+  }
+  html body span[data-badfaith='flag'][data-bf-severity='high'] {
+    --bf-hl-a: 0.34 !important;
+  }
+}
+
+/* The reveal: each stroke is drawn once, in reading order. `--bf-i` is the flag's
+   position in that order, set on the wrapper by article/highlight.ts. */
+@keyframes bf-ink-in {
+  from {
+    background-size: 0% 100%;
+    box-shadow: inset 0 -1.5px 0 0 rgba(var(--bf-hl), 0);
+  }
+  to {
+    background-size: 100% 100%;
+    box-shadow: inset 0 -1.5px 0 0 rgba(var(--bf-hl), var(--bf-hl-line));
+  }
+}
+
+html body span[data-badfaith='flag'][data-bf-ink] {
+  animation: bf-ink-in 520ms cubic-bezier(0.22, 0.61, 0.25, 1) both !important;
+  animation-delay: calc(var(--bf-i, 0) * 70ms) !important;
+}
+
+/* Hover here, or hover this flag's row in the report: one gesture, two surfaces.
+   `:hover` lights the segment under the pointer straight away; `data-bf-hot`,
+   which content/hover.ts sets, lights every segment of a quote that broke across
+   an inline element, so a split phrase never half-lights. */
+html body span[data-badfaith='flag']:hover,
+html body span[data-badfaith='flag'][data-bf-hot] {
+  /* Enough to be unmistakable, not so much that the phrase becomes a block the
+     reader has to read through — the halo does most of the work. */
+  --bf-boost: 1.7 !important;
+  --bf-hl-line: 0.85 !important;
+  box-shadow:
+    inset 0 -2px 0 0 rgba(var(--bf-hl), 0.85),
+    0 0 0 3px rgba(var(--bf-hl), 0.1),
+    0 6px 20px -4px rgba(var(--bf-hl), 0.45) !important;
 }
 
 html body span[data-badfaith='flag']:focus-visible {
   outline: 2px solid rgba(var(--bf-hl), 0.9) !important;
-  outline-offset: 2px !important;
+  outline-offset: 3px !important;
+}
+
+/* "Here it is": the answer to clicking a row in the report, after the scroll
+   lands. One bloom that fades, not a repeating pulse. */
+@keyframes bf-found {
+  0% {
+    box-shadow:
+      inset 0 -2px 0 0 rgba(var(--bf-hl), 0.9),
+      0 0 0 0 rgba(var(--bf-hl), 0.5),
+      0 0 24px 0 rgba(var(--bf-hl), 0.55);
+  }
+  70% {
+    box-shadow:
+      inset 0 -2px 0 0 rgba(var(--bf-hl), 0.9),
+      0 0 0 8px rgba(var(--bf-hl), 0),
+      0 0 24px 0 rgba(var(--bf-hl), 0.3);
+  }
+  100% {
+    box-shadow:
+      inset 0 -1.5px 0 0 rgba(var(--bf-hl), var(--bf-hl-line)),
+      0 0 0 8px rgba(var(--bf-hl), 0),
+      0 0 24px 0 rgba(var(--bf-hl), 0);
+  }
 }
 
 html body span[data-badfaith='flag'][data-bf-pulse] {
-  animation:
-    bf-sweep 3.6s linear infinite,
-    bf-pulse 0.9s ease-in-out 2 !important;
+  --bf-boost: 1.7 !important;
+  animation: bf-found 1.3s cubic-bezier(0.22, 0.61, 0.25, 1) both !important;
 }
 
 html[data-badfaith-highlights='off'] body span[data-badfaith='flag'] {
@@ -80,14 +151,13 @@ html[data-badfaith-highlights='off'] body span[data-badfaith='flag'] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html body span[data-badfaith='flag'],
-  html body span[data-badfaith='flag'][data-bf-pulse] {
-    animation: none !important;
-    background-position: 50% 0 !important;
+  html body span[data-badfaith='flag'] {
+    transition: none !important;
   }
+  /* The stroke still arrives and the found-bloom still resolves; neither travels. */
+  html body span[data-badfaith='flag'][data-bf-ink],
   html body span[data-badfaith='flag'][data-bf-pulse] {
-    box-shadow:
-      inset 0 -1.5px 0 0 rgba(var(--bf-hl), 0.95),
-      0 0 0 3px rgba(var(--bf-hl), 0.28) !important;
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
   }
 }

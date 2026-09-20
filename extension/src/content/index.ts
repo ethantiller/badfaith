@@ -9,6 +9,7 @@ import {
   flagId,
   focusFlag,
   highlightCount,
+  setFlagHot,
   setHighlightsVisible,
 } from '../article/highlight';
 import { parseParagraphs } from '../article/paragraph_parser';
@@ -61,6 +62,8 @@ function surface(): Surface {
       focusFlag(id);
       if (!state.highlightsVisible) toggleHighlights(true);
     },
+    // Pointing at a row in the report is the same act as pointing at the phrase.
+    onFlagHover: (id) => watcher.silently(() => setFlagHot(id)),
     onToggleHighlights: toggleHighlights,
     onClear: teardown,
   });
@@ -200,7 +203,7 @@ function checkForChanges(): void {
   if (highlightCount() === 0) {
     const flags = state.result.flags;
     watcher.silently(() => {
-      applyFlags(flags, state.nodeMap);
+      applyFlags(flags, state.nodeMap, false);
       setHighlightsVisible(state.highlightsVisible);
     });
   }
@@ -210,9 +213,18 @@ function checkForChanges(): void {
 
 wireHighlightHover({
   lookup: (id) => state.flagsById.get(id),
-  show: (anchor, flag) => state.surface?.tooltip.open(anchor, flag),
-  hide: () => state.surface?.tooltip.close(),
-  dismiss: () => state.surface?.tooltip.closeNow(),
+  show: (anchor, flag) => {
+    state.surface?.tooltip.open(anchor, flag);
+    state.surface?.card.setHotFlag(anchor.getAttribute('data-flag-id'));
+  },
+  hide: () => {
+    state.surface?.tooltip.close();
+    state.surface?.card.setHotFlag(null);
+  },
+  dismiss: () => {
+    state.surface?.tooltip.closeNow();
+    state.surface?.card.setHotFlag(null);
+  },
 });
 
 chrome.runtime.onMessage.addListener((message: TabRequest, sender, sendResponse) => {

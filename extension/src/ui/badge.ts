@@ -3,7 +3,7 @@
 // expands into the card.
 import type { AnalyzeResponse, PageState } from '../types';
 import { DOC_TYPE_LABELS, displayDocType, plural } from './labels';
-import { button, el } from './dom';
+import { button, el, glowable } from './dom';
 
 export interface BadgeDetail {
   result?: AnalyzeResponse;
@@ -62,12 +62,15 @@ export function createBadge(onActivate: (event: MouseEvent) => void): BadgeView 
   const element = button({ className: 'bf-pill' });
   element.addEventListener('click', onActivate);
 
+  // Rebuilt on every render, so the light layer is kept aside rather than re-made.
+  const glow = glowable(element).firstElementChild!;
+
   function render(state: PageState, detail: BadgeDetail = {}): void {
     element.dataset.state = state;
 
     const shape = shapeFor(state, detail);
     if (!shape) {
-      element.replaceChildren();
+      element.replaceChildren(glow);
       return;
     }
 
@@ -76,6 +79,7 @@ export function createBadge(onActivate: (event: MouseEvent) => void): BadgeView 
     else element.removeAttribute('aria-label');
 
     element.replaceChildren(
+      glow,
       el('span', { className: shape.busy ? 'bf-spinner' : 'bf-dot' }),
       el('span', { className: 'bf-pill-label', text: shape.label }),
       ...(shape.count ? [el('span', { className: 'bf-pill-count', text: shape.count })] : []),
