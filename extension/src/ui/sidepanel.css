@@ -212,12 +212,12 @@ body,
   border-top: 1px solid var(--bf-line);
 }
 
-/* --- Tabs: one underline that slides between three equal cells --- */
+/* --- Tabs: one underline that slides between equal cells --- */
 
 .bf-tabs {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(var(--bf-tab-count, 3), 1fr);
   border-bottom: 1px solid var(--bf-line);
 }
 
@@ -226,7 +226,7 @@ body,
   position: absolute;
   bottom: -1px;
   left: 0;
-  width: calc(100% / 3);
+  width: calc(100% / var(--bf-tab-count, 3));
   height: 2px;
   background: var(--bf-accent);
   transform: translateX(calc(var(--bf-tab-index, 0) * 100%));
@@ -522,4 +522,68 @@ body,
 
 .bf-reveal {
   animation: bf-fade-in 400ms var(--bf-ease) both;
+}
+
+/* --- Neutral rewrite --- */
+
+.bf-rewrite {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--bf-line);
+  cursor: pointer;
+}
+
+.bf-rewrite:hover {
+  background: var(--bf-accent-soft);
+}
+
+.bf-rewrite-original {
+  display: block;
+  margin: 0 0 6px;
+  font: 400 12px/1.45 var(--bf-font);
+  color: var(--bf-text-dim);
+  text-decoration: line-through;
+}
+
+.bf-rewrite-neutral {
+  display: block;
+  margin: 0;
+  font: 400 13px/1.45 var(--bf-font);
+  color: var(--bf-text);
+}
+
+/* --- Before / After wording switch --- */
+
+.bf-segmented {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--bf-surface-sunken);
+  border: 1px solid var(--bf-line);
+  border-radius: 999px;
+}
+
+.bf-segment {
+  padding: 3px 11px;
+  font: 500 12px/1.3 var(--bf-font);
+  color: var(--bf-text-dim);
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color var(--bf-fast) var(--bf-ease),
+    background-color var(--bf-fast) var(--bf-ease);
+}
+
+.bf-segment:hover {
+  color: var(--bf-text);
+}
+
+.bf-segment[aria-pressed='true'] {
+  color: var(--bf-on-accent);
+  background: var(--bf-accent);
 }

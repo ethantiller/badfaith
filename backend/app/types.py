@@ -199,6 +199,47 @@ class AnalyzeResponse(BaseModel):
     meta: AnalyzeMeta
 
 
+MAX_REWRITE_ITEMS = 40
+MAX_QUOTE_CHARS = 1000
+
+
+class RewriteItem(BaseModel):
+    paragraph_id: int = Field(ge=0)
+    text: str = Field(min_length=1, max_length=MAX_CHARS_PER_PARAGRAPH)  # the paragraph, for context
+    quote: str = Field(min_length=1, max_length=MAX_QUOTE_CHARS)  # the flagged passage to rewrite
+    technique: Technique | None = None
+    explanation: str = Field(default="", max_length=1000)  # why the labeler flagged it
+
+    @model_validator(mode="after")
+    def _quote_in_text(self) -> Self:
+        if self.quote not in self.text:
+            raise ValueError(f"quote is not verbatim in paragraph {self.paragraph_id}")
+        return self
+
+
+class RewriteRequest(BaseModel):
+    doc_hash: str = Field(max_length=128)
+    title: str = Field(max_length=500)
+    items: list[RewriteItem] = Field(min_length=1, max_length=MAX_REWRITE_ITEMS)
+
+
+class Rewrite(BaseModel):
+    paragraph_id: int
+    original: str  # echoed from the request, never model output, so it is always verbatim
+    rewrite: str
+
+
+class RewriteMeta(BaseModel):
+    model_route: str
+    latency_ms: int
+
+
+class RewriteResponse(BaseModel):
+    doc_hash: str
+    rewrites: list[Rewrite] = Field(default_factory=list)
+    meta: RewriteMeta
+
+
 __all__ = [
     "Technique",
     "Severity",
@@ -224,4 +265,9 @@ __all__ = [
     "Citation",
     "AnalyzeMeta",
     "AnalyzeResponse",
+    "RewriteItem",
+    "RewriteRequest",
+    "Rewrite",
+    "RewriteMeta",
+    "RewriteResponse",
 ]

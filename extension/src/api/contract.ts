@@ -6,10 +6,19 @@ import {
   MAX_ENTITY_CHARS,
   MAX_PARAGRAPHS,
   MAX_PARAGRAPH_CHARS,
+  MAX_QUOTE_CHARS,
+  MAX_REWRITE_ITEMS,
   MAX_TITLE_CHARS,
   MAX_URL_CHARS,
 } from '../types';
-import type { AnalyzeRequest, CoverageRequest, Paragraph, SectionHint } from '../types';
+import type {
+  AnalyzeRequest,
+  CoverageRequest,
+  Paragraph,
+  RewriteItem,
+  RewriteRequest,
+  SectionHint,
+} from '../types';
 
 const SECTION_HINTS: readonly SectionHint[] = ['opinion', 'news', null];
 
@@ -93,4 +102,33 @@ export function buildCoverageRequest(input: CoverageRequest): CoverageRequest {
     entities,
     title: (input.title ?? '').slice(0, MAX_TITLE_CHARS),
   };
+}
+
+/**
+ * Client-side mirror of backend/app/types.py::RewriteRequest. An item whose quote no
+ * longer sits verbatim in its (clamped) paragraph would 422 the whole request, so it is
+ * dropped here instead; the rest of the rewrite still goes through.
+ */
+export function buildRewriteRequest(input: RewriteRequest): RewriteRequest {
+  if (typeof input.doc_hash !== 'string' || input.doc_hash.length === 0) {
+    throw new ContractError('Analyze the article before rewriting it.');
+  }
+
+  const items: RewriteItem[] = [];
+  for (const item of input.items) {
+    const text = item.text.slice(0, MAX_PARAGRAPH_CHARS);
+    const quote = item.quote.slice(0, MAX_QUOTE_CHARS);
+    if (quote.length === 0 || !text.includes(quote)) continue;
+    items.push({ paragraph_id: item.paragraph_id, text, quote,
+      technique: item.technique,
+      explanation: (item.explanation ?? '').slice(0, 1_000),
+    });
+    if (items.length === MAX_REWRITE_ITEMS) break;
+  }
+
+  if (items.length === 0) {
+    throw new ContractError('There are no flagged passages to rewrite.');
+  }
+
+  return { doc_hash: input.doc_hash, title: (input.title ?? '').slice(0, 500), items };
 }
