@@ -22,6 +22,8 @@ dev: clean-dist
 build: typecheck clean-dist
 	npx tsc
 	npx vite build
+	set BUILD_TARGET=content&& npx vite build
+	set BUILD_TARGET=background&& npx vite build
 
 typecheck:
 	npm run typecheck
