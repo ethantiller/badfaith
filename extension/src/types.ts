@@ -191,8 +191,15 @@ export interface AuthState {
   email: string | null;
 }
 
+export interface CoverageSearchRequest {
+  doc_hash: string;
+  url: string;
+  title: string;
+}
+
 export type BgRequest =
   | { kind: 'ANALYZE_REQUEST'; payload: AnalyzeRequest }
+  | { kind: 'COVERAGE_REQUEST'; payload: CoverageSearchRequest }
   | { kind: 'AUTH_STATUS' }
   | { kind: 'AUTH_SIGN_IN'; email: string; password: string }
   | { kind: 'AUTH_SIGN_UP'; email: string; password: string; isAgeVerified: boolean }

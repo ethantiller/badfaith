@@ -66,9 +66,38 @@ function surface(): Surface {
     onFlagHover: (id) => watcher.silently(() => setFlagHot(id)),
     onToggleHighlights: toggleHighlights,
     onClear: teardown,
+    onShowCoverageSearch: () => {
+      const view = surface();
+      view.card.showCoverageSearch(executeCoverageSearch);
+    },
   });
 
   return state.surface;
+}
+
+async function executeCoverageSearch(): Promise<void> {
+  const view = surface();
+  if (!state.result) return;
+
+  view.card.showCoverageLoading();
+
+  const response = await sendToBackground<any>({
+    kind: 'COVERAGE_REQUEST',
+    payload: {
+      doc_hash: state.result.meta.doc_hash,
+      url: location.href,
+      title: document.title,
+    },
+  });
+
+  if (!response.ok) {
+    console.error('Coverage search failed:', response.message);
+    view.card.showResults();
+    return;
+  }
+
+  // TODO: Display coverage results
+  view.card.showResults();
 }
 
 function toggleHighlights(visible: boolean): void {

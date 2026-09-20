@@ -20,6 +20,7 @@ export interface CardHandlers {
   onFlagHover(id: string | null): void;
   onToggleHighlights(visible: boolean): void;
   onClear(): void;
+  onShowCoverageSearch(): void;
 }
 
 export interface CardView {
@@ -28,6 +29,9 @@ export interface CardView {
   setHighlightsVisible(visible: boolean): void;
   /** Lights a row because the pointer is on that phrase in the article. */
   setHotFlag(id: string | null): void;
+  showCoverageSearch(onSearch: () => void): void;
+  showCoverageLoading(): void;
+  showResults(): void;
 }
 
 function section(title: string, ...body: Node[]): HTMLElement {
@@ -106,10 +110,6 @@ function flagRow(
 }
 
 function claimRow(claim: Claim): HTMLElement {
-  const verify = glowable(button({ className: 'bf-ghost-button', children: ['Verify'] }));
-  verify.disabled = true;
-  verify.title = 'Coming soon';
-
   const quote = el('div', {
     className: 'bf-claim-quote',
     children: [
@@ -121,7 +121,18 @@ function claimRow(claim: Claim): HTMLElement {
     ],
   });
 
-  return el('div', { className: 'bf-claim', children: [quote, verify] });
+  return el('div', { className: 'bf-claim', children: [quote] });
+}
+
+function loadingDots(): HTMLElement {
+  return el('div', {
+    className: 'bf-loading-dots',
+    children: [
+      el('span', { className: 'bf-dot' }),
+      el('span', { className: 'bf-dot' }),
+      el('span', { className: 'bf-dot' }),
+    ],
+  });
 }
 
 export function createCard(handlers: CardHandlers): CardView {
@@ -133,10 +144,17 @@ export function createCard(handlers: CardHandlers): CardView {
   heading.style.flex = '1';
   heading.style.minWidth = '0';
 
+  const coverageBtn = button({
+    className: 'bf-coverage-header-button',
+    children: ['Coverage'],
+    onClick: handlers.onShowCoverageSearch,
+  });
+
   const head = el('header', {
     className: 'bf-card-head',
     children: [
       heading,
+      coverageBtn,
       button({
         className: 'bf-icon-button',
         text: '×',
@@ -165,6 +183,8 @@ export function createCard(handlers: CardHandlers): CardView {
     children: [head, body, foot],
   });
 
+  let currentResult: AnalyzeResponse | null = null;
+
   function flagSections(result: AnalyzeResponse): HTMLElement[] {
     if (result.flags.length === 0) {
       return [section('Flagged phrases', note('No flagged phrases in this article.'))];
@@ -191,6 +211,7 @@ export function createCard(handlers: CardHandlers): CardView {
     return section(title, ...result.claims.map(claimRow));
   }
 
+
   function groundingSection(result: AnalyzeResponse): HTMLElement[] {
     if (result.meta.flags_dropped === 0) return [];
 
@@ -199,6 +220,7 @@ export function createCard(handlers: CardHandlers): CardView {
   }
 
   function render(result: AnalyzeResponse): void {
+    currentResult = result;
     const docType = displayDocType(result);
     title.textContent = DOC_TYPE_LABELS[docType];
     subtitle.textContent = docTypeSourceLabel(docType, result.doc_type_source);
@@ -208,6 +230,44 @@ export function createCard(handlers: CardHandlers): CardView {
       claimsSection(result),
       ...groundingSection(result),
     );
+  }
+
+  function showCoverageSearch(onSearch: () => void): void {
+    title.textContent = 'Coverage';
+    subtitle.textContent = 'See what other articles are saying about this topic';
+
+    const searchButton = glowable(
+      button({
+        className: 'bf-coverage-search-button',
+        children: ['Search now'],
+        onClick: onSearch,
+      }),
+    );
+
+    body.replaceChildren(
+      el('div', {
+        className: 'bf-coverage-search-container',
+        children: [searchButton],
+      }),
+    );
+  }
+
+  function showCoverageLoading(): void {
+    title.textContent = 'Coverage';
+    subtitle.textContent = 'Searching…';
+
+    body.replaceChildren(
+      el('div', {
+        className: 'bf-coverage-loading-container',
+        children: [loadingDots()],
+      }),
+    );
+  }
+
+  function showResults(): void {
+    if (currentResult) {
+      render(currentResult);
+    }
   }
 
   return {
@@ -223,5 +283,8 @@ export function createCard(handlers: CardHandlers): CardView {
       if (!id) return;
       body.querySelector(`.bf-row[data-flag-id="${CSS.escape(id)}"]`)?.setAttribute('data-hot', '');
     },
+    showCoverageSearch,
+    showCoverageLoading,
+    showResults,
   };
 }

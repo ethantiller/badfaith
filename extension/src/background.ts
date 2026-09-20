@@ -3,6 +3,7 @@
 // anything durable already lives in chrome.storage via the Supabase client.
 import { ApiError, getErrorMessage } from './api/client';
 import { sendAnalyzeRequest } from './api/analyze';
+import { sendCoverageRequest } from './api/coverage';
 import { ContractError } from './api/contract';
 import {
   getSession,
@@ -68,6 +69,19 @@ function handle(message: BgRequest): Promise<BgResult<unknown>> {
       return attempt(async () => {
         await requireSession();
         return sendAnalyzeRequest(message.payload);
+      });
+
+    case 'COVERAGE_REQUEST':
+      return attempt(async () => {
+        await requireSession();
+        const payload = message.payload;
+        return sendCoverageRequest({
+          doc_hash: payload.doc_hash,
+          claim_id: 'article',
+          quote: payload.title,
+          entities: [],
+          title: payload.title,
+        });
       });
 
     case 'AUTH_STATUS':
