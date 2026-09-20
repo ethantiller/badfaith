@@ -146,7 +146,7 @@ async def main() -> None:
 	try:
 		results = await search(
 		title="climate change",
-		entities=['United Nations'],
+		entities=[],
 		max_records=50,
 			timelimit="y",
 )
@@ -159,9 +159,8 @@ async def main() -> None:
 		return
 
 	for article in results:
-		print(f"- Title: {article.headline}")
-		print(f"  Summary: {article.snippet}")  # <--- THIS PRINTS THE SUMMARY!
-		print(f"  URL: {article.url}\n")
+		print(f"- {article.headline} ({article.url})")
+
 
 if __name__ == "__main__":
 	import asyncio

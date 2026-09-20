@@ -30,7 +30,6 @@ async def get_coverage(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     user_payload: Annotated[dict, Depends(get_current_user)],
-    http_request: Request = None,
 ):
     """Find related coverage and summarize it for the whole article."""
     # Extract user ID from JWT payload
