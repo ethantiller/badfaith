@@ -226,7 +226,7 @@ class Settings(BaseSettings):
     DATABASE_INSTANCE_STRING: str              # Supabase async PostgreSQL URL
     supabase_url: str
     supabase_anon_key: str
-    nemotron_api_key: str          # from mounted secret file (when implemented)
+    nvidia_api_key: str            # from mounted secret file (when implemented)
     cache_ttl_hours: int = 24
 ```
 `pydantic-settings` with `get_settings()` and `lru_cache`. Nothing reads `os.environ`

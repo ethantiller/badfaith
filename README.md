@@ -225,7 +225,7 @@ client and puts them on `app.state`. No business logic. Under 60 lines.
 ### `app/config.py`
 ```python
 class Settings(BaseSettings):
-    nemotron_api_key: str          # from mounted secret file
+    nvidia_api_key: str            # from mounted secret file
     nemotron_base_url: str
     model_small: str
     model_large: str

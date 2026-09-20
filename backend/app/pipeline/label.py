@@ -51,12 +51,15 @@ async def label_batch(
     raw = await ctx.nemotron.complete_json(prompt, model, RawLabelBatch)
 
     policy = SEVERITY_POLICY.get(doc_type, {})
+
     flags: list[Flag] = []
+
     for item in raw.flags:
         technique = _to_enum(Technique, item.technique)
         if technique is None:
             logger.info("skipping flag with unknown technique %r", item.technique)
             continue
+        
         # A grounded flag is never dropped over its severity: fall back to medium.
         severity = _to_enum(Severity, item.severity) or Severity.MEDIUM
         flags.append(

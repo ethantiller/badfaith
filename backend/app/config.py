@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     # CORS — set to specific extension ID in production
     extension_origin: str = "chrome-extension://*"
 
-    # Nemotron
-    nemotron_api_key: str = ""
+    # Nemotron (served through build.nvidia.com)
+    nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model_large: str = "nvidia/nemotron-3-super-120b-a12b"
     nvidia_model_small: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
@@ -52,11 +52,6 @@ class Settings(BaseSettings):
     def supabase_anon_key(self) -> str:
         """Alias for supabase_key."""
         return self.supabase_key
-
-    @property
-    def nvidia_api_key(self) -> str:
-        """Alias for nemotron_api_key."""
-        return self.nemotron_api_key
 
 
 @lru_cache(maxsize=1)

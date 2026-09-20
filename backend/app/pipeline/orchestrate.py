@@ -1,12 +1,13 @@
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal
 
+from backend.app.deps import ensure_quote_in_text
 from backend.app.ext.nemotron import NemotronClient
 from backend.app.pipeline.classify import resolve_doc_type
-from backend.app.pipeline.ground import verify_quotes
 from backend.app.pipeline.label import label_batch
 from backend.app.types import AnalyzeMeta, AnalyzeRequest, AnalyzeResponse
 from backend.app.utils.text import batch_paragraphs, sample_for_classification
@@ -26,7 +27,7 @@ class PipelineContext:
     label_route: Literal["small", "large"] = "large"  # which model labels; the routing eval flips it
     batch_size: int = 5
     max_concurrency: int = 8  # simultaneous model calls, to stay inside API rate limits
-    budget_s: float = 25.0  # whole-request budget; batches unfinished by then are given up
+    budget_s: float = 60.0  # whole-request budget; batches unfinished by then are given up
 
 
 async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResponse:
@@ -91,17 +92,19 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
         raise AnalysisError(f"all {len(batches)} batches failed")
 
     paragraphs = {p.id: p.text for p in req.paragraphs}
-    grounded = verify_quotes(flags, claims, paragraphs)
-    if grounded.reasons:
-        logger.info("grounding dropped %s", grounded.reasons)
+    article_json = json.dumps({"paragraphs": [{"id": p.id, "text": p.text} for p in req.paragraphs]})
+
+    # Use deps function to confirm flags and claims are in the original request
+    grounded_flags = _keep_grounded(flags, "flags", paragraphs, article_json)
+    grounded_claims = _keep_grounded(claims, "claims", paragraphs, article_json)
 
     def in_article_order(item):
         return item.paragraph_id, paragraphs[item.paragraph_id].find(item.quote)
 
-    kept_flags = sorted(grounded.flags, key=in_article_order)
+    kept_flags = sorted(grounded_flags, key=in_article_order)
     kept_claims = [
         claim.model_copy(update={"id": f"c{n}"})
-        for n, claim in enumerate(sorted(grounded.claims, key=in_article_order))
+        for n, claim in enumerate(sorted(grounded_claims, key=in_article_order))
     ]
 
     return AnalyzeResponse(
@@ -112,6 +115,15 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
         meta=AnalyzeMeta(
             model_route=ctx.label_route,
             latency_ms=round((perf_counter() - started) * 1000),
-            flags_dropped=grounded.flags_dropped,
         ),
     )
+
+
+def _keep_grounded(items, key: str, paragraphs: dict[int, str], article_json: str) -> list:
+    #
+    return [
+        item
+        for item in items
+        if item.paragraph_id in paragraphs
+        and ensure_quote_in_text(json.dumps({key: [{"quote": item.quote}]}), article_json)
+    ]

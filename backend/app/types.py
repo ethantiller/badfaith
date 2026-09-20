@@ -155,8 +155,6 @@ class AnalyzeMeta(BaseModel):
     doc_hash: str = ""  # filled by the route once hashing exists
     model_route: str  # which model tier labeled; values pending
     latency_ms: int
-    flags_dropped: int = 0  # grounding gate reject count
-
 
 class AnalyzeResponse(BaseModel):
     doc_type: DocType

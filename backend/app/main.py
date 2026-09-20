@@ -2,15 +2,15 @@ from contextlib import asynccontextmanager
 import logging
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
+from backend.app.api.analyze import router as analyze_router
+from backend.app.api.coverage import router as coverage_router
 from backend.app.config import get_settings
 from backend.app.db import Database
 from backend.app.deps import set_db
-from backend.app.api.analyze import router as analyze_router
-from backend.app.api.coverage import router as coverage_router
-from backend.app.middleware.cors import add_cors_middlewarefrom backend.app.ext.nemotron import NemotronClient
+from backend.app.ext.nemotron import NemotronClient
+from backend.app.middleware.cors import add_cors_middleware
 from backend.app.pipeline.orchestrate import PipelineContext
 
 logger = logging.getLogger(__name__)
@@ -48,24 +48,17 @@ async def lifespan(app: FastAPI):
     await db.close()
 
 
-settings = get_settings()
 app = FastAPI(title="badfaith", version="0.1.0", lifespan=lifespan, docs_url=None)
 
 add_cors_middleware(app)
 
+app.include_router(analyze_router, prefix="/api/v1")
 app.include_router(coverage_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-    # Mount routers
-    app.include_router(analyze_router)
-    app.include_router(coverage_router)
 
-    # Health check endpoint (no auth required)
-    @app.get("/health")
-    async def health():
-        return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn

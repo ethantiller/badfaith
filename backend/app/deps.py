@@ -36,16 +36,6 @@ def extract_user_id(token: str) -> UUID:
     return UUID(bytes=hash_digest[:16])
 
 
-def get_current_user(authorization: str = Header(...)) -> UUID:
-    """Extract user ID from Authorization header (Bearer <token>)."""
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authorization header. Expected 'Bearer <token>'.",
-        )
-    token = authorization[7:]  # Remove "Bearer " prefix
-    return extract_user_id(token)
-
 def ensure_quote_in_text(response: str, actual_paragraphs: str) -> bool:
     try:
         response_data = json.loads(response)
