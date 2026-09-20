@@ -56,6 +56,10 @@ export type GetParagraphsResponse =
   | { ok: true; paragraphs: Paragraph[] }
   | { ok: false; error: string };
 
+export type OpinionStatusResponse =
+  | { ok: true; status: 'opinion' | null }
+  | { ok: false; error: string };
+
 export interface AnalyzeRequest {
   url: string;
   section_hint: string | null;
