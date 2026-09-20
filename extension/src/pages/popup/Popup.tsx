@@ -122,7 +122,7 @@ export default function Popup() {
             {error}
           </p>
         )}
-        <button type="button" className="bf-secondary" onClick={onSignOut} disabled={busy}>
+        <button type="button" className="bf-secondary" data-bf-glow onClick={onSignOut} disabled={busy}>
           {busy ? 'Signing out…' : 'Sign out'}
         </button>
       </main>
@@ -193,7 +193,7 @@ export default function Popup() {
 
         <button
           type="submit"
-          className="bf-submit"
+          className="bf-submit" data-bf-glow
           disabled={busy || (view === 'signUp' && !ageVerified)}
         >
           {busy && <Spinner />}
@@ -280,7 +280,7 @@ function ThisPage({
         </p>
       )}
 
-      <button type="button" className="bf-submit" onClick={onAnalyze} disabled={analyzing}>
+      <button type="button" className="bf-submit" data-bf-glow onClick={onAnalyze} disabled={analyzing}>
         {analyzing && <Spinner />}
         {label}
       </button>

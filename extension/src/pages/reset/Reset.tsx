@@ -124,7 +124,7 @@ export default function Reset() {
           </p>
         )}
 
-        <button type="submit" className="bf-submit" disabled={busy}>
+        <button type="submit" className="bf-submit" data-bf-glow disabled={busy}>
           {busy && <Spinner />}
           {busy ? 'Saving…' : 'Save password'}
         </button>

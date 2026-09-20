@@ -1,7 +1,14 @@
 // Dev-only harness. Renders a fake article and drives the real UI modules so the
 // injected surfaces can be reviewed in a plain browser tab, without loading the
 // extension. Not part of dist/ and never shipped.
-import { applyFlags, ensureHighlightStyles, flagId, focusFlag, setHighlightsVisible } from '../src/article/highlight';
+import {
+  applyFlags,
+  ensureHighlightStyles,
+  flagId,
+  focusFlag,
+  setFlagHot,
+  setHighlightsVisible,
+} from '../src/article/highlight';
 import { parseParagraphs } from '../src/article/paragraph_parser';
 import { createCard } from '../src/ui/card';
 import { createHost } from '../src/ui/host';
@@ -87,6 +94,7 @@ function show(next: boolean) {
 card = createCard({
   onClose: () => show(false),
   onFlagClick: (id) => focusFlag(id),
+  onFlagHover: (id) => setFlagHot(id),
   onToggleHighlights: (next) => {
     visible = next;
     setHighlightsVisible(next);
@@ -120,12 +128,18 @@ document.addEventListener('pointerover', (event) => {
   if (!(target instanceof Element)) return;
   const element = target.closest('span[data-badfaith="flag"]');
   const flag = element && flagsById.get(element.getAttribute('data-flag-id') ?? '');
-  if (element && flag) tooltip.open(element, flag);
+  if (element && flag) {
+    tooltip.open(element, flag);
+    card.setHotFlag(element.getAttribute('data-flag-id'));
+  }
 });
 
 document.addEventListener('pointerout', (event) => {
   const target = event.target;
-  if (target instanceof Element && target.closest('span[data-badfaith="flag"]')) tooltip.close();
+  if (target instanceof Element && target.closest('span[data-badfaith="flag"]')) {
+    tooltip.close();
+    card.setHotFlag(null);
+  }
 });
 
 host.dock.append(badge.element, tooltip.element);

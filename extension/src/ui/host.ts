@@ -3,6 +3,7 @@
 import tokensCss from './tokens.css?inline';
 import injectedCss from './injected.css?inline';
 import { el } from './dom';
+import { attachPointerGlow } from './glow';
 
 const HOST_ATTRIBUTE = 'data-badfaith';
 
@@ -35,6 +36,9 @@ export function createHost(): ShadowHost {
   const dock = el('div', { className: 'bf-dock' });
   root.append(el('style', { text: `${tokensCss}\n${injectedCss}` }), dock);
 
+  // One listener for every control in here, now and later.
+  const detachGlow = attachPointerGlow(dock);
+
   return {
     dock,
     ensureMounted() {
@@ -43,6 +47,7 @@ export function createHost(): ShadowHost {
       if (host.getAttribute('style') !== HOST_STYLE) host.style.cssText = HOST_STYLE;
     },
     destroy() {
+      detachGlow();
       host.remove();
     },
   };

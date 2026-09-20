@@ -91,11 +91,35 @@ function toSegments(anchors: CharAnchor[], from: number, to: number): CharAnchor
   return segments;
 }
 
-function buildWrapper(flag: Flag, flagId: string, index: number): HTMLSpanElement {
+function buildWrapper(
+  flag: Flag,
+  flagId: string,
+  index: number,
+  order: number,
+  reveal: boolean,
+): HTMLSpanElement {
   const span = document.createElement('span');
   span.setAttribute('data-badfaith', 'flag');
   span.setAttribute('data-flag-id', flagId);
   span.setAttribute('data-bf-severity', flag.severity);
+  // The stroke is drawn once, in reading order; highlight.css turns this into the
+  // animation delay. Skipped when we are only restoring wrappers a site re-render
+  // threw away — the reader already watched that happen.
+  if (reveal) {
+    span.setAttribute('data-bf-ink', '');
+    span.style.setProperty('--bf-i', String(order));
+    // Dropped as soon as it has run. Left on, it would restart every time another
+    // rule stopped overriding it — so clicking a row in the report would end with
+    // the highlight redrawing itself once the found-bloom cleared.
+    span.addEventListener(
+      'animationend',
+      () => {
+        span.removeAttribute('data-bf-ink');
+        span.style.removeProperty('--bf-i');
+      },
+      { once: true },
+    );
+  }
   // Only the first segment is focusable, so one quote is one tab stop.
   if (index === 0) {
     span.setAttribute('tabindex', '0');
@@ -126,14 +150,21 @@ export function flagId(flag: Flag, index: number): string {
  * Wraps each flag's quote inside the one paragraph element it names. A quote that
  * cannot be found, whose paragraph has since changed, or that overlaps an earlier
  * highlight is skipped and counted — never thrown.
+ *
+ * `reveal` draws each stroke on, staggered by reading order. Pass false to put
+ * wrappers back silently after the site re-rendered them away.
  */
-export function applyFlags(flags: Flag[], nodeMap: Map<number, HTMLElement>): ApplyResult {
+export function applyFlags(
+  flags: Flag[],
+  nodeMap: Map<number, HTMLElement>,
+  reveal = true,
+): ApplyResult {
   ensureHighlightStyles();
 
-  const byParagraph = new Map<number, Array<{ flag: Flag; id: string }>>();
+  const byParagraph = new Map<number, Array<{ flag: Flag; id: string; order: number }>>();
   flags.forEach((flag, index) => {
     const bucket = byParagraph.get(flag.paragraph_id);
-    const entry = { flag, id: flagId(flag, index) };
+    const entry = { flag, id: flagId(flag, index), order: index };
     if (bucket) bucket.push(entry);
     else byParagraph.set(flag.paragraph_id, [entry]);
   });
@@ -151,9 +182,15 @@ export function applyFlags(flags: Flag[], nodeMap: Map<number, HTMLElement>): Ap
     const { text, anchors } = indexParagraph(element);
     const haystack = normalizeForMatch(text);
     const taken: Array<[number, number]> = [];
-    const matches: Array<{ id: string; flag: Flag; start: number; end: number }> = [];
+    const matches: Array<{
+      id: string;
+      flag: Flag;
+      order: number;
+      start: number;
+      end: number;
+    }> = [];
 
-    for (const { flag, id } of entries) {
+    for (const { flag, id, order } of entries) {
       const needle = normalizeForMatch(flag.quote).replace(/\s+/g, ' ').trim();
       if (!needle) {
         skipped += 1;
@@ -176,7 +213,7 @@ export function applyFlags(flags: Flag[], nodeMap: Map<number, HTMLElement>): Ap
       }
 
       taken.push([start, end]);
-      matches.push({ id, flag, start, end });
+      matches.push({ id, flag, order, start, end });
     }
 
     // Descending order: splitting a text node at a later offset leaves every earlier
@@ -193,7 +230,7 @@ export function applyFlags(flags: Flag[], nodeMap: Map<number, HTMLElement>): Ap
           const range = document.createRange();
           range.setStart(segment.node, segment.start);
           range.setEnd(segment.node, segment.end);
-          const wrapper = buildWrapper(match.flag, match.id, i);
+          const wrapper = buildWrapper(match.flag, match.id, i, match.order, reveal);
           range.surroundContents(wrapper);
           wrappers.push(wrapper);
         }
@@ -243,6 +280,20 @@ function setPulse(nodes: Iterable<Element>, on: boolean): void {
     if (on) node.setAttribute('data-bf-pulse', '');
     else node.removeAttribute('data-bf-pulse');
   }
+}
+
+/**
+ * Lights one flag's highlight from somewhere else — the pointer is on that flag's
+ * row in the report, not on the phrase. Passing null puts every highlight back.
+ * Every segment of a quote that broke across an inline element lights together, so
+ * a split phrase never half-lights.
+ */
+export function setFlagHot(id: string | null): void {
+  for (const node of document.querySelectorAll(`${FLAG_SELECTOR}[data-bf-hot]`)) {
+    node.removeAttribute('data-bf-hot');
+  }
+  if (!id) return;
+  for (const node of segmentsOf(id)) node.setAttribute('data-bf-hot', '');
 }
 
 export function findFlagElement(id: string): HTMLElement | null {
