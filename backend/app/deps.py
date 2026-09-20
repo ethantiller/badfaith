@@ -7,6 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db import Database
 
+import json
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 db: Database | None = None
 
 
@@ -40,3 +45,35 @@ def get_current_user(authorization: str = Header(...)) -> UUID:
         )
     token = authorization[7:]  # Remove "Bearer " prefix
     return extract_user_id(token)
+
+def ensure_quote_in_text(response: str, actual_paragraphs: str) -> bool:
+    try:
+        response_data = json.loads(response)
+    except json.JSONDecodeError:
+        logging.error("Failed to decode JSON")
+        return False
+
+    try:
+        actual_data = json.loads(actual_paragraphs)
+    except json.JSONDecodeError:
+        actual_data = None
+
+    nemotron_quotes = []
+    for item_type in ("claims", "flags"):
+        for item in response_data.get(item_type, []):
+            nemotron_quotes.append(item["quote"])
+
+    if isinstance(actual_data, dict):
+        actual_quotes = [
+            paragraph["text"]
+            for paragraph in actual_data.get("paragraphs", [])
+        ]
+    else:
+        actual_quotes = [actual_paragraphs]
+
+    for quote in nemotron_quotes:
+        if not any(quote in paragraph for paragraph in actual_quotes):
+            return False
+
+    return True
+

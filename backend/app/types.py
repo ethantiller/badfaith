@@ -164,3 +164,23 @@ class AnalyzeResponse(BaseModel):
     flags: list[Flag] = Field(default_factory=list)
     claims: list[Claim] = Field(default_factory=list)
     meta: AnalyzeMeta
+
+
+__all__ = [
+    "Technique",
+    "Severity",
+    "VerificationStatus",
+    "DocType",
+    "DocTypeSource",
+    "ClaimType",
+    "Article",
+    "CoverageRequest",
+    "RelatedSource",
+    "Omission",
+    "CoverageMeta",
+    "CoverageResponse",
+    "Flag",
+    "Claim",
+    "AnalyzeMeta",
+    "AnalyzeResponse",
+]

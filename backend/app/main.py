@@ -10,7 +10,7 @@ from backend.app.db import Database
 from backend.app.deps import set_db
 from backend.app.api.analyze import router as analyze_router
 from backend.app.api.coverage import router as coverage_router
-from backend.app.ext.nemotron import NemotronClient
+from backend.app.middleware.cors import add_cors_middlewarefrom backend.app.ext.nemotron import NemotronClient
 from backend.app.pipeline.orchestrate import PipelineContext
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
 
     # Initialize database
-    db = Database(settings.database_url)
+    db = Database(settings.get_database_url())
     db.init()
     set_db(db)
 
@@ -48,20 +48,16 @@ async def lifespan(app: FastAPI):
     await db.close()
 
 
-def create_app() -> FastAPI:
-    """Construct and configure the FastAPI application."""
-    settings = get_settings()
-    app = FastAPI(title="badfaith", version="0.1.0", lifespan=lifespan, docs_url=None)
+settings = get_settings()
+app = FastAPI(title="badfaith", version="0.1.0", lifespan=lifespan, docs_url=None)
 
-    # CORS middleware — allow only the Chrome extension origin
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[settings.extension_origin],
-        allow_credentials=True,
-        allow_methods=["POST", "GET"],
-        allow_headers=["authorization", "content-type"],
-    )
+add_cors_middleware(app)
 
+app.include_router(coverage_router, prefix="/api/v1")
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
     # Mount routers
     app.include_router(analyze_router)
     app.include_router(coverage_router)
@@ -70,12 +66,6 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health():
         return {"status": "ok"}
-
-    return app
-
-
-app = create_app()
-
 
 if __name__ == "__main__":
     import uvicorn

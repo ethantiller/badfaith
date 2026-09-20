@@ -14,6 +14,7 @@ dependencies = [
     "greenlet>=3.0.0",
     "pydantic-settings>=2.10.0",
     "sqlalchemy>=2.0.54",
+    "supabase>=2.31.0",
     "uvicorn>=0.53.0",
 ]
 
