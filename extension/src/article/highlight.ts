@@ -1,11 +1,12 @@
 // Wraps flagged quotes in the live article. Never innerHTML, never node replacement:
 // the news site's own listeners and React roots have to survive this.
 import highlightCss from '../ui/highlight.css?inline';
-import type { Claim, Flag } from '../types';
+import type { Citation, Claim, Flag } from '../types';
 
 const STYLE_ID = 'badfaith-highlight-styles';
 const FLAG_SELECTOR = 'span[data-badfaith="flag"]';
 const CLAIM_SELECTOR = 'span[data-badfaith="claim"]';
+const CITATION_SELECTOR = 'span[data-badfaith="citation"]';
 // Operations that must not care which kind a wrapper is: clearing, the "off" toggle, restore.
 const ANY_SELECTOR = 'span[data-badfaith]';
 const PULSE_MS = 1800;
@@ -102,7 +103,7 @@ function toSegments(anchors: CharAnchor[], from: number, to: number): CharAnchor
 
 /** Everything a flag wrapper and a claim wrapper share; kind-specific bits layer on top. */
 function buildWrapper(
-  kind: 'flag' | 'claim',
+  kind: 'flag' | 'claim' | 'citation',
   id: string,
   index: number,
   order: number,
@@ -111,7 +112,7 @@ function buildWrapper(
 ): HTMLSpanElement {
   const span = document.createElement('span');
   span.setAttribute('data-badfaith', kind);
-  span.setAttribute(kind === 'flag' ? 'data-flag-id' : 'data-claim-id', id);
+  span.setAttribute(`data-${kind}-id`, id);
   // The stroke is drawn once, in reading order; highlight.css turns this into the
   // animation delay. Skipped when we are only restoring wrappers a site re-render
   // threw away — the reader already watched that happen.
@@ -162,6 +163,25 @@ function buildClaimWrapper(
   reveal: boolean,
 ): HTMLSpanElement {
   return buildWrapper('claim', id, index, order, reveal, `Checkable claim: ${claim.quote}`);
+}
+
+function buildCitationWrapper(
+  citation: Citation,
+  id: string,
+  index: number,
+  order: number,
+  reveal: boolean,
+): HTMLSpanElement {
+  const span = buildWrapper(
+    'citation',
+    id,
+    index,
+    order,
+    reveal,
+    `Quoted source, ${citation.speaker}: ${citation.quote}`,
+  );
+  span.setAttribute('data-bf-speaker', citation.speaker);
+  return span;
 }
 
 export function ensureHighlightStyles(): void {
@@ -305,6 +325,15 @@ export function applyClaims(
   return applyHighlights(claims, nodeMap, reveal, (claim) => claim.id, buildClaimWrapper);
 }
 
+/** Citations share the matching machinery; they are wrapped under their own `s<n>` id. */
+export function applyCitations(
+  citations: Citation[],
+  nodeMap: Map<number, HTMLElement>,
+  reveal = true,
+): ApplyResult {
+  return applyHighlights(citations, nodeMap, reveal, (citation) => citation.id, buildCitationWrapper);
+}
+
 function unwrap(span: Element): void {
   const parent = span.parentNode;
   if (!parent) return;
@@ -325,6 +354,10 @@ export function highlightCount(): number {
 
 export function claimHighlightCount(): number {
   return document.querySelectorAll(CLAIM_SELECTOR).length;
+}
+
+export function citationHighlightCount(): number {
+  return document.querySelectorAll(CITATION_SELECTOR).length;
 }
 
 export function setHighlightsVisible(visible: boolean): void {
@@ -366,6 +399,10 @@ export function findClaimElement(id: string): HTMLElement | null {
   return segmentsOf(CLAIM_SELECTOR, 'data-claim-id', id)[0] as HTMLElement | undefined ?? null;
 }
 
+export function findCitationElement(id: string): HTMLElement | null {
+  return segmentsOf(CITATION_SELECTOR, 'data-citation-id', id)[0] as HTMLElement | undefined ?? null;
+}
+
 export function focusFlag(id: string): void {
   const element = findFlagElement(id);
   if (!element) return;
@@ -387,4 +424,19 @@ export function focusClaim(id: string): void {
   setPulse(segmentsOf(CLAIM_SELECTOR, 'data-claim-id', id), true);
 
   window.setTimeout(() => setPulse(segmentsOf(CLAIM_SELECTOR, 'data-claim-id', id), false), PULSE_MS);
+}
+
+/** Same navigate-and-pulse behavior as `focusClaim`, scoped to citation wrappers. */
+export function focusCitation(id: string): void {
+  const element = findCitationElement(id);
+  if (!element) return;
+
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setPulse(document.querySelectorAll(`${CITATION_SELECTOR}[data-bf-pulse]`), false);
+  setPulse(segmentsOf(CITATION_SELECTOR, 'data-citation-id', id), true);
+
+  window.setTimeout(
+    () => setPulse(segmentsOf(CITATION_SELECTOR, 'data-citation-id', id), false),
+    PULSE_MS,
+  );
 }

@@ -59,6 +59,21 @@ export type DocType = 'news' | 'news_with_heavy_bias' | 'news_with_slight_bias' 
 export type DocTypeSource = 'metadata' | 'model';
 export type ClaimType = 'statistic' | 'attributed_quote' | 'date_or_count';
 
+/** What a quoted speaker is, from search evidence. Locked list; mirrors `SpeakerRole` in app/types.py. */
+export type SpeakerRole =
+  | 'government_official'
+  | 'elected_politician'
+  | 'journalist'
+  | 'academic_expert'
+  | 'industry_corporate'
+  | 'funder_donor'
+  | 'advocacy_activist'
+  | 'think_tank'
+  | 'legal_court'
+  | 'private_individual'
+  | 'anonymous'
+  | 'unknown';
+
 /** What the content script scraped from the page. `null` means nothing found. */
 export type SectionHint = 'opinion' | 'news' | null;
 
@@ -86,6 +101,15 @@ export interface Claim {
   entities: string[];
 }
 
+export interface Citation {
+  id: string;
+  paragraph_id: number;
+  quote: string;
+  /** As the paragraph names them, or "anonymous". */
+  speaker: string;
+  speaker_role: SpeakerRole;
+}
+
 export interface AnalyzeMeta {
   cached: boolean;
   doc_hash: string;
@@ -106,6 +130,7 @@ export interface AnalyzeResponse {
   doc_type_source: DocTypeSource;
   flags: Flag[];
   claims: Claim[];
+  citations: Citation[];
   meta: AnalyzeMeta;
 }
 
@@ -232,6 +257,7 @@ export type TabRequest =
   | { kind: 'RUN_ANALYZE' }
   | { kind: 'FOCUS_FLAG'; id: string }
   | { kind: 'FOCUS_CLAIM'; id: string }
+  | { kind: 'FOCUS_CITATION'; id: string }
   | { kind: 'SET_HOT_FLAG'; id: string | null }
   | { kind: 'TOGGLE_HIGHLIGHTS'; visible: boolean }
   | { kind: 'CLEAR' };

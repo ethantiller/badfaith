@@ -264,6 +264,7 @@ export default function SidePanel() {
             toTab({ kind: 'SET_HOT_FLAG', id });
           }}
           onClaimClick={(id) => toTab({ kind: 'FOCUS_CLAIM', id })}
+          onCitationClick={(id) => toTab({ kind: 'FOCUS_CITATION', id })}
           onToggleHighlights={onToggleHighlights}
           onClear={onClear}
           onSearchCoverage={() => void searchCoverage()}
@@ -299,6 +300,7 @@ interface StageProps {
   onFlagClick(id: string): void;
   onFlagHover(id: string | null): void;
   onClaimClick(id: string): void;
+  onCitationClick(id: string): void;
   onToggleHighlights(visible: boolean): void;
   onClear(): void;
   onSearchCoverage(): void;
@@ -385,6 +387,7 @@ function Stage(props: StageProps) {
         onFlagClick={props.onFlagClick}
         onFlagHover={props.onFlagHover}
         onClaimClick={props.onClaimClick}
+        onCitationClick={props.onCitationClick}
         onToggleHighlights={props.onToggleHighlights}
         onClear={props.onClear}
         onSearchCoverage={props.onSearchCoverage}

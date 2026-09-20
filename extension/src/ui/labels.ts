@@ -6,6 +6,7 @@ import type {
   DisplayDocType,
   DocTypeSource,
   Severity,
+  SpeakerRole,
   Technique,
 } from '../types';
 
@@ -80,6 +81,38 @@ export const CLAIM_TYPE_LABELS: Record<ClaimType, string> = {
   statistic: 'Statistic',
   attributed_quote: 'Attributed quote',
   date_or_count: 'Date or count',
+};
+
+export const SPEAKER_ROLE_LABELS: Record<SpeakerRole, string> = {
+  government_official: 'Government official',
+  elected_politician: 'Elected politician',
+  journalist: 'Journalist',
+  academic_expert: 'Academic expert',
+  industry_corporate: 'Industry or corporate',
+  funder_donor: 'Funder or donor',
+  advocacy_activist: 'Advocacy or activist',
+  think_tank: 'Think tank',
+  legal_court: 'Legal or court',
+  private_individual: 'Private individual',
+  anonymous: 'Anonymous source',
+  unknown: 'Unknown',
+};
+
+// Fixed caveats keyed by role. The model never writes these, so the UI cannot assert bias
+// the pipeline did not establish; they say what to weigh, not that the speaker is wrong.
+export const SPEAKER_ROLE_NOTES: Record<SpeakerRole, string> = {
+  government_official: 'Speaks for an institution with its own interests to present.',
+  elected_politician: 'Has political incentives; statements may serve a party or campaign.',
+  journalist: 'Reporting or commentary; check whether it is news or opinion.',
+  academic_expert: 'Usually independent, but check who funds the research.',
+  industry_corporate: 'Has a financial interest in how the topic is framed.',
+  funder_donor: 'Funds the cause or topic at hand, which may shape their view.',
+  advocacy_activist: 'Advocates for a position; expect a one-sided framing.',
+  think_tank: 'May have a policy agenda or funders behind it.',
+  legal_court: 'A legal filing or ruling; one party’s argument is not a finding.',
+  private_individual: 'A personal account; not independently verified.',
+  anonymous: 'The source is unnamed, so their motive cannot be checked.',
+  unknown: 'We could not find who this is, so their perspective is unassessed.',
 };
 
 export function plural(count: number, one: string, many: string): string {

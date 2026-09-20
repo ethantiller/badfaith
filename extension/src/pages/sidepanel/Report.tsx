@@ -27,6 +27,7 @@ interface Props {
   onFlagClick(id: string): void;
   onFlagHover(id: string | null): void;
   onClaimClick(id: string): void;
+  onCitationClick(id: string): void;
   onToggleHighlights(visible: boolean): void;
   onClear(): void;
   onSearchCoverage(): void;
@@ -131,7 +132,13 @@ export default function Report(props: Props) {
             onFlagHover={props.onFlagHover}
           />
         )}
-        {tab === 'claims' && <ClaimsTab result={result} onClaimClick={props.onClaimClick} />}
+        {tab === 'claims' && (
+          <ClaimsTab
+            result={result}
+            onClaimClick={props.onClaimClick}
+            onCitationClick={props.onCitationClick}
+          />
+        )}
         {tab === 'coverage' && (
           <CoverageTab entry={props.coverage} onSearch={props.onSearchCoverage} />
         )}

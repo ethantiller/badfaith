@@ -3,10 +3,11 @@ import { postJson } from './client';
 import { buildAnalyzeRequest } from './contract';
 
 /**
- * Display threshold. The backend never filters by confidence (the eval needs every
- * grounded flag), so low-confidence flags are dropped here, before any UI sees them.
+ * Display threshold, kept equal to the backend's `MIN_FLAG_CONFIDENCE` in
+ * pipeline/orchestrate.py, which already drops these flags before counting bias. This
+ * is a second guard so no low-confidence flag ever reaches the UI.
  */
-export const MIN_FLAG_CONFIDENCE = 0.8;
+export const MIN_FLAG_CONFIDENCE = 0.85;
 
 export async function sendAnalyzeRequest(
   request: AnalyzeRequest,

@@ -4,11 +4,14 @@
 import { detectOpinionPiece } from '../article/detect_opinion_piece';
 import { paragraphHash } from '../article/doc_hash';
 import {
+  applyCitations,
   applyClaims,
   applyFlags,
+  citationHighlightCount,
   claimHighlightCount,
   clearHighlights,
   flagId,
+  focusCitation,
   focusClaim,
   focusFlag,
   highlightCount,
@@ -19,7 +22,7 @@ import { parseParagraphs } from '../article/paragraph_parser';
 import { broadcast, isOwnMessage, sendToBackground } from '../messaging';
 import { describeError, isRetryable } from '../messaging/errors';
 import { displayDocType } from '../ui/labels';
-import type { AnalyzeResponse, Flag, PageState, PageStatus, TabRequest } from '../types';
+import type { AnalyzeResponse, Citation, Flag, PageState, PageStatus, TabRequest } from '../types';
 import { wireHighlightHover } from './hover';
 import { createSurface, type Surface } from './surface';
 import { createWatcher } from './watcher';
@@ -35,6 +38,7 @@ const state = {
   surface: null as Surface | null,
   nodeMap: new Map<number, HTMLElement>(),
   flagsById: new Map<string, Flag>(),
+  citationsById: new Map<string, Citation>(),
   result: null as AnalyzeResponse | null,
   hash: null as string | null,
   highlightsVisible: true,
@@ -68,6 +72,7 @@ function teardown(): void {
   state.surface?.destroy();
   state.surface = null;
   state.flagsById = new Map();
+  state.citationsById = new Map();
   state.result = null;
   state.hash = null;
   state.highlightsVisible = true;
@@ -77,11 +82,13 @@ function teardown(): void {
 function renderResult(result: AnalyzeResponse): void {
   surface();
   state.flagsById = new Map(result.flags.map((flag, index) => [flagId(flag, index), flag]));
+  state.citationsById = new Map((result.citations ?? []).map((citation) => [citation.id, citation]));
 
   watcher.silently(() => {
     clearHighlights();
     applyFlags(result.flags, state.nodeMap);
     applyClaims(result.claims, state.nodeMap);
+    applyCitations(result.citations ?? [], state.nodeMap);
     setHighlightsVisible(state.highlightsVisible);
   });
 
@@ -181,14 +188,33 @@ function checkForChanges(): void {
       setHighlightsVisible(state.highlightsVisible);
     });
   }
+
+  if (citationHighlightCount() === 0) {
+    const citations = state.result.citations ?? [];
+    watcher.silently(() => {
+      applyCitations(citations, state.nodeMap, false);
+      setHighlightsVisible(state.highlightsVisible);
+    });
+  }
 }
 
 // --- Entry point ---
 
 wireHighlightHover({
-  lookup: (id) => state.flagsById.get(id),
-  show: (anchor, flag) => {
-    state.surface?.tooltip.open(anchor, flag);
+  lookup: (kind, id) => {
+    if (kind === 'citation') {
+      const citation = state.citationsById.get(id);
+      return citation ? { kind, citation } : undefined;
+    }
+    const flag = state.flagsById.get(id);
+    return flag ? { kind, flag } : undefined;
+  },
+  show: (anchor, target) => {
+    if (target.kind === 'citation') {
+      state.surface?.tooltip.openCitation(anchor, target.citation);
+      return;
+    }
+    state.surface?.tooltip.open(anchor, target.flag);
     broadcast({ kind: 'HOVER_FLAG', id: anchor.getAttribute('data-flag-id') });
   },
   hide: () => {
@@ -222,6 +248,12 @@ chrome.runtime.onMessage.addListener((message: TabRequest, sender, sendResponse)
 
   if (message?.kind === 'FOCUS_CLAIM') {
     focusClaim(message.id);
+    if (!state.highlightsVisible) toggleHighlights(true);
+    return false;
+  }
+
+  if (message?.kind === 'FOCUS_CITATION') {
+    focusCitation(message.id);
     if (!state.highlightsVisible) toggleHighlights(true);
     return false;
   }
