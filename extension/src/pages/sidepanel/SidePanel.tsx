@@ -7,6 +7,7 @@ import { describeError, isRetryable } from '../../messaging/errors';
 import { plural } from '../../ui/labels';
 import type {
   AuthState,
+  Claim,
   CoverageResponse,
   HoverBroadcast,
   PageStatus,
@@ -19,6 +20,26 @@ import Report from './Report';
 
 function hasReport(page: PageStatus | null): page is PageStatus & { result: NonNullable<PageStatus['result']> } {
   return page !== null && page.result !== null && (page.state === 'done' || page.state === 'stale');
+}
+
+/**
+ * Claim entities, most-mentioned first. The request contract keeps only the first
+ * MAX_ENTITIES, so ordering decides which ones drive the coverage search.
+ */
+function rankEntities(claims: Claim[]): string[] {
+  const counts = new Map<string, { name: string; count: number }>();
+  for (const claim of claims) {
+    for (const raw of claim.entities) {
+      const name = raw.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      const seen = counts.get(key);
+      if (seen) seen.count += 1;
+      else counts.set(key, { name, count: 1 });
+    }
+  }
+  // Array.sort is stable, so ties keep article order.
+  return [...counts.values()].sort((a, b) => b.count - a.count).map((e) => e.name);
 }
 
 export default function SidePanel() {
@@ -186,7 +207,7 @@ export default function SidePanel() {
       kind: 'COVERAGE_REQUEST',
       payload: {
         doc_hash: hash,
-        entities: result.claims.flatMap((claim) => claim.entities),
+        entities: rankEntities(result.claims),
         title,
       },
     });
@@ -283,6 +304,45 @@ interface StageProps {
   onSearchCoverage(): void;
 }
 
+const PROGRESS_STEPS = [
+  'Reading the article…',
+  'Looking for loaded language…',
+  'Checking for rhetorical techniques…',
+  'Extracting checkable claims…',
+  'Verifying quotes against the text…',
+  'Doing some finishing touches…',
+];
+
+// A pacing indicator, not a measurement: the backend reports no progress, so the bar
+// eases toward 94% and holds there until the real result replaces it.
+function FakeProgress() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const started = Date.now();
+    const timer = window.setInterval(() => setElapsed(Date.now() - started), 250);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const percent = 94 * (1 - Math.exp(-elapsed / 12000));
+  const step = Math.min(PROGRESS_STEPS.length - 1, Math.floor(percent / 16));
+
+  return (
+    <div className="bf-progress">
+      <div
+        className="bf-progress-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(percent)}
+      >
+        <div className="bf-progress-fill" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="bf-progress-label">{PROGRESS_STEPS[step]}</p>
+    </div>
+  );
+}
+
 // Whatever fills the stage for the current tab: unreadable page, no article, the idle
 // button, the busy dots, or the finished report.
 function Stage(props: StageProps) {
@@ -308,6 +368,7 @@ function Stage(props: StageProps) {
         <p className="bf-lede bf-busy-status">Analyzing this article…</p>
         <div className="bf-busy-dots">
           <Dots />
+          <FakeProgress />
         </div>
       </div>
     );

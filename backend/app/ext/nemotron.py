@@ -52,25 +52,31 @@ class NemotronClient:
         model: str,
         schema: type[T],
         *,
-        retries: int = 2,
+        retries: int = 4,
         thinking: bool = False,
     ) -> T:
         """Send the prompt, return a parsed `schema` instance.
 
         Transport errors, 429 and 5xx retry with jittered backoff. If the reply doesn't
-        parse, the model is reprompted once before raising NemotronError. `thinking` turns
+        parse, the model is reprompted once before raising NemotronError. The schema is sent as a
+        constrained-decoding `response_format` so the model can't emit malformed JSON (it
+        was duplicating keys, e.g. `"severity": "severity": ...`). `thinking` turns
         the model's reasoning mode on; it is slower, so it is off unless a stage needs it.
         """
         messages = [{"role": "user", "content": prompt}]
         error: Exception | None = None
 
         for attempt in range(2):  # first try, then one reprompt
-            content = await self._chat(messages, model, retries=retries, thinking=thinking)
+            content = await self._chat(
+                messages, model, retries=retries, thinking=thinking, schema=schema
+            )
             try:
                 return schema.model_validate_json(_extract_json(content))
             except (ValidationError, ValueError) as exc:
                 error = exc
-                logger.warning("nemotron_parse_failed model=%s attempt=%d", model, attempt)
+                logger.warning(
+                    "nemotron_parse_failed model=%s attempt=%d raw=%.300r", model, attempt, content
+                )
                 if content:
                     messages.append({"role": "assistant", "content": content})
                 messages.append({"role": "user", "content": _REPROMPT.format(error=str(exc)[:500])})
@@ -78,7 +84,13 @@ class NemotronClient:
         raise NemotronError(f"unparseable output from {model} after reprompt: {error}")
 
     async def _chat(
-        self, messages: list[dict[str, str]], model: str, *, retries: int, thinking: bool
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        *,
+        retries: int,
+        thinking: bool,
+        schema: type[BaseModel] | None = None,
     ) -> str:
         payload = {
             "model": model,
@@ -88,6 +100,11 @@ class NemotronClient:
             # sent at the top level of the body; the OpenAI SDK's `extra_body` merges to here
             "chat_template_kwargs": {"enable_thinking": thinking},
         }
+        if schema is not None:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()},
+            }
         headers = {"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"}
 
         for attempt in range(retries + 1):
@@ -104,13 +121,18 @@ class NemotronClient:
             else:
                 if resp.status_code == 200:
                     return self._read_reply(resp, model, started)
+                if resp.status_code == 400 and "response_format" in payload:
+                    # model doesn't support constrained decoding; fall back to prompt-only JSON
+                    del payload["response_format"]
+                    logger.warning("nemotron_response_format_unsupported model=%s", model)
+                    continue
                 if resp.status_code not in _RETRY_STATUS:
                     raise NemotronError(f"{model} returned {resp.status_code}: {resp.text[:300]}")
                 failure = f"status {resp.status_code}"
 
             if attempt == retries:
                 raise NemotronError(f"{model} failed after {retries + 1} attempts: {failure}")
-            await asyncio.sleep(min(8.0, 2.0**attempt) * (0.5 + random.random()))
+            await asyncio.sleep(min(16.0, 2.0**attempt) * (0.5 + random.random()))
 
         raise AssertionError("unreachable")
 

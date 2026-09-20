@@ -356,6 +356,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  align-items: center;
+  text-align: center;
   padding: 11px 13px;
   background: var(--bf-surface-sunken);
   border-radius: var(--bf-radius-sm);

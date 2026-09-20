@@ -38,6 +38,8 @@ body,
   gap: 16px;
   width: 100%;
   max-width: 300px;
+  align-items: center;
+  text-align: center;
 }
 
 .bf-footer {
@@ -52,6 +54,8 @@ body,
    animation-delay, so nothing here needs a JS timer. */
 
 .bf-analyze-cta {
+  display: flex;
+  justify-content: center;
   opacity: 1;
   transform: translateY(0) scale(1);
   transition:
@@ -79,8 +83,11 @@ body,
 }
 
 .bf-busy-dots {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
   animation: bf-fade-in var(--bf-base) var(--bf-ease) calc(var(--bf-base) * 0.75) both;
 }
 
@@ -323,7 +330,9 @@ body,
 }
 
 .bf-source {
-  display: block;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   padding: 9px 0;
   color: inherit;
   text-decoration: none;
@@ -354,4 +363,95 @@ body,
   margin-top: 2px;
   font-size: 12px;
   color: var(--bf-text-dim);
+}
+
+.bf-source-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.bf-source-text > span {
+  display: block;
+}
+
+.bf-favicon {
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+  margin-top: 1px;
+  background: var(--bf-line);
+}
+
+.bf-favicon-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--bf-text-dim);
+}
+
+.bf-coverage-card {
+  padding: 14px 16px;
+  border: 1px solid var(--bf-line);
+  border-radius: 10px;
+}
+
+.bf-coverage-card .bf-coverage-summary + .bf-coverage-summary {
+  margin-top: 10px;
+}
+
+.bf-coverage-basis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--bf-line);
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}
+
+.bf-favicon-stack {
+  display: inline-flex;
+}
+
+.bf-favicon-stack .bf-favicon {
+  margin: 0 0 0 -5px;
+  box-shadow: 0 0 0 2px var(--bf-surface);
+}
+
+.bf-favicon-stack .bf-favicon:first-child {
+  margin-left: 0;
+}
+
+.bf-progress {
+  width: 100%;
+  max-width: 220px;
+  text-align: center;
+}
+
+.bf-progress-track {
+  height: 4px;
+  overflow: hidden;
+  background: var(--bf-line);
+  border-radius: 999px;
+}
+
+.bf-progress-fill {
+  height: 100%;
+  background: var(--bf-accent);
+  border-radius: inherit;
+  transition: width 300ms linear;
+}
+
+.bf-progress-label {
+  min-height: 1.4em;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}
+
+.bf-reveal {
+  animation: bf-fade-in 400ms var(--bf-ease) both;
 }
