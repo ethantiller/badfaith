@@ -102,8 +102,6 @@ panel, it's a credibility signal. `model_route` is the tier that labeled the art
 ```json
 {
   "doc_hash": "sha256:...",
-  "claim_id": "c0",
-  "quote": "unemployment fell to 3.8 percent",
   "entities": ["unemployment", "August 2026"],
   "title": "Senate passes funding bill"
 }
@@ -113,13 +111,10 @@ panel, it's a credibility signal. `model_route` is the tier that labeled the art
 
 ```json
 {
-  "claim_id": "c0",
-  "status": "supported | contradicted | unverified",
+  "doc_hash": "sha256:...",
+  "summary": "Several outlets report the same central development, while differing on its likely impact.",
   "related": [
     { "outlet": "Reuters", "url": "...", "headline": "...", "snippet": "...", "seendate": "2026-09-17T14:00:00Z" }
-  ],
-  "omissions": [
-    { "summary": "Other outlets note the figure excludes seasonal workers.", "corroborating_urls": ["..."] }
   ],
   "meta": { "sources_queried": 47, "latency_ms": 3200 }
 }

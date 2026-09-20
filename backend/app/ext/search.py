@@ -36,13 +36,13 @@ def build_query(title: str, entities: Sequence[str]) -> str:
 
 
 def build_article_summary_prompt(title: str, articles: Sequence[Article]) -> str:
-	"""Format related articles into one bounded, labeled Nemotron input."""
+	"""Format search results as a bounded, source-labeled Nemotron input."""
 	if not articles:
 		raise ValueError("Article summaries require at least one article")
 
-	blocks = []
+	article_blocks = []
 	for index, article in enumerate(articles, start=1):
-		blocks.append(
+		article_blocks.append(
 			f"Article {index}\n"
 			f"Title: {article.headline}\n"
 			f"Summary: {article.snippet}\n"
@@ -50,11 +50,11 @@ def build_article_summary_prompt(title: str, articles: Sequence[Article]) -> str
 		)
 
 	return (
-		f"Write one concise, neutral summary of the related coverage about {title!r}. "
-		"Use only the article information below. Mention the main consensus and any "
-		"important disagreement. Return JSON with exactly one string field named "
-		"summary.\n\n"
-		+ "\n\n".join(blocks)
+		"Summarize the consensus and important disagreements across the news articles "
+		f"below about {title!r}. Return one concise neutral summary. "
+		"Use only the article information provided. Do not mention the formatting or "
+		"the existence of this prompt.\n\n"
+		+ "\n\n".join(article_blocks)
 	)
 
 
@@ -146,7 +146,7 @@ async def main() -> None:
 	try:
 		results = await search(
 		title="climate change",
-		entities=[],
+		entities=['United Nations'],
 		max_records=50,
 			timelimit="y",
 )
@@ -159,8 +159,9 @@ async def main() -> None:
 		return
 
 	for article in results:
-		print(f"- {article.headline} ({article.url})")
-
+		print(f"- Title: {article.headline}")
+		print(f"  Summary: {article.snippet}")  # <--- THIS PRINTS THE SUMMARY!
+		print(f"  URL: {article.url}\n")
 
 if __name__ == "__main__":
 	import asyncio

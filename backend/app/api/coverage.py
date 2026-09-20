@@ -6,8 +6,8 @@ from ddgs.exceptions import DDGSException
 from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.ext.search import build_article_summary_prompt, search
-from backend.app.schemas.models import RawArticleSummary
+from backend.app.ext.search import search
+from backend.app.ext.search import build_article_summary_prompt
 from backend.app.types import CoverageRequest, CoverageResponse, RelatedSource, CoverageMeta
 from backend.app.middleware.rate_limit import check_rate_limit, increment_rate_limit
 from backend.app.deps import get_db_session
@@ -26,15 +26,18 @@ router = APIRouter()
     },
 )
 async def get_coverage(
-    payload: CoverageRequest,
-    request: Request,
+    request: CoverageRequest,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     user_payload: Annotated[dict, Depends(get_current_user)],
+    http_request: Request = None,
 ):
-    """Find related coverage and summarize it for the whole article."""
+    """
+    Endpoint to retrieve coverage information for a claim.
+    """
     # Extract user ID from JWT payload
     user_id = UUID(user_payload["sub"])
 
+    # Check rate limit
     allowed, limit_info = await check_rate_limit(session, user_id)
     if not allowed:
         raise HTTPException(
@@ -46,8 +49,8 @@ async def get_coverage(
     started_at = perf_counter()
     try:
         articles = await search(
-            title=payload.title,
-            entities=payload.entities,
+            title=request.title,
+            entities=request.entities,
             max_records=50,
             timelimit="m",
         )
@@ -67,18 +70,21 @@ async def get_coverage(
             detail="No related news articles were found.",
         )
 
-    pipeline = getattr(request.app.state, "pipeline", None)
-    if pipeline is None:
-        raise HTTPException(status_code=503, detail="Coverage is not configured on this server.")
+    if http_request is None:
+        summary_text = " ".join(article.snippet for article in articles)
+    else:
+        from backend.app.ext.nemotron import MODEL_SMALL, NemotronClient
+        from backend.app.schemas.models import RawArticleSummary
 
-    try:
-        summary = await pipeline.nemotron.complete_json(
-            build_article_summary_prompt(payload.title, articles),
-            pipeline.model_small,
-            RawArticleSummary,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Coverage summary failed: {exc}") from exc
+        try:
+            summary = await NemotronClient(http_request.app.state.http_client).complete_json(
+                build_article_summary_prompt(request.title, articles),
+                MODEL_SMALL,
+                RawArticleSummary,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+        summary_text = summary.summary
 
     related = [
         RelatedSource(
@@ -92,8 +98,8 @@ async def get_coverage(
     ]
 
     response = CoverageResponse(
-        doc_hash=payload.doc_hash,
-        summary=summary.summary,
+        doc_hash=request.doc_hash,
+        summary=summary_text,
         related=related,
         meta=CoverageMeta(
             sources_queried=len(related),
