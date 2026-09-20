@@ -1,7 +1,13 @@
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 
-ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:8000", "chrome-extension://*"]
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "chrome-extension://ennmblnlachljakenhmfhkfmaiifpadj", 
+    "chrome-extension://opccecmonhhoikcjnmbijkhogbdgbbmp",
+    "chrome-extension://fjjfaajfpabhmbjldopedhnjbanbjhbl"
+]
 
 def add_cors_middleware(app: FastAPI) -> None:
     app.add_middleware(

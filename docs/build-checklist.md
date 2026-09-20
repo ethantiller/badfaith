@@ -72,33 +72,55 @@ else from working if it isn't done.
 
 ### Extension shell
 
-- [ ] `pnpm create wxt`, React + TypeScript template
-- [ ] `wxt.config.ts` — permissions `storage`, `sidePanel`, `activeTab`; host permissions
-      limited to the five domains; no `externally_connectable`
-- [x] `lib/types.ts` — hand-mirror of the Python schemas plus auth request/response types
-- [x] `lib/auth.ts` — Email auth with `chrome.storage.local` persistence. Exports: `signUp()`, `signIn()`, `signOut()`, `resetPassword()`, `updatePassword()`, `getIdToken()`, `getSession()`, `refreshSession()`, `initAuth()`
-- [x] `lib/api_helpers.ts` — `ApiError`, `makeAuthenticatedRequest<T>()`, `buildHeaders()`, `generateRequestId()`, `getErrorMessage()`
-- [x] `lib/analyze.ts` — `sendAnalyzeRequest(request)` → POST `/api/v1/analyze`
-- [x] `lib/coverage.ts` — `sendCoverageRequest(request)` → POST `/api/v1/coverage`
-- [ ] `entrypoints/background.ts` — message router, `sender.id` check, side panel open on
-      action click, no module-level mutable state
+- [x] Extension scaffold (Vite + React + TypeScript; popup = login plus the Analyze button)
+- [x] `public/manifest.json` — permissions `storage`; no `externally_connectable`; adds
+      `background.service_worker` and `web_accessible_resources` for `reset.html`, scoped
+      to `https://*.supabase.co/*`. Host permissions still `https://*/*`; narrow them to
+      the five tested domains before judging
+- [x] `src/types.ts` — hand-mirror of the Python schemas plus auth request/response types
+- [x] `auth/` — Email auth with `chrome.storage.local` persistence. Exports: `signUp()`, `signIn()`, `signOut()`, `resetPassword()`, `updatePassword()`, `getIdToken()`, `getSession()`, `refreshSession()`, `initAuth()`
+- [x] `api/client.ts` — `ApiError`, `makeAuthenticatedRequest<T>()`, `buildHeaders()`, `generateRequestId()`, `getErrorMessage()`
+- [x] `api/analyze.ts` — `sendAnalyzeRequest(request)` → POST `/api/v1/analyze`
+- [x] `api/coverage.ts` — `sendCoverageRequest(request)` → POST `/api/v1/coverage`
+- [x] ~~`lib/mock_analyze.ts`~~ — removed. `background.ts` calls `sendAnalyzeRequest`
+      against the real `POST /api/v1/analyze`
+- [x] `api/contract.ts` — validates `AnalyzeRequest` against the schema's caps before
+      anything is sent, so a bad payload fails with a useful message, not a 422
+- [x] `app/types.py::AnalyzeRequest` + `Paragraph` with size caps, mirrored in
+      `src/types.ts`, covered by `tests/unit/test_analyze_request.py`
+- [x] `src/background.ts` — message router, `sender.id` check, all network calls, no
+      module-level mutable state, the only Supabase client in the extension
 - [ ] **Smoke test the full auth loop early**: sign up/in → token → `/analyze` → 200 with a hardcoded paragraph array. Do this before any real UI exists. Auth and API helpers are done; just wire up background worker + content script
-- [ ] `entrypoints/content.ts` — message handling, extract, send, receive, inject
-- [ ] `lib/extract.ts` — Readability against `doc.cloneNode(true)`, never the live document
-- [ ] `lib/metadata.ts` — `detectSection()` from URL path, `article:section` meta,
-      schema.org `articleSection`. Returns `null` freely
-- [ ] **[HIGHEST RISK]** `lib/paragraphs.ts` — `toParagraphs()` returning paragraphs plus
-      the `Map<number, HTMLElement>`. Skip nodes under 40 chars, skip captions and pull
-      quotes
+- [x] `src/content/` — message handling, extract, send, receive, inject. Renders
+      nothing until the popup asks, so an ordinary page carries no extension DOM
+- [x] ~~`lib/extract.ts` (Readability)~~ — not used. `paragraph_parser.ts` selects the
+      article container with its own heuristics and reads the live DOM, because the
+      highlighter needs the live elements it returns
+- [x] `article/detect_opinion_piece.ts` — from URL path, `article:section` meta and schema.org
+      `articleSection`. Returns `null` freely
+- [x] **[HIGHEST RISK]** `article/paragraph_parser.ts` — returns paragraphs, the
+      `Map<number, HTMLElement>`, `foundArticleContainer` and the container roots
 - [ ] Test `toParagraphs` on all five domains, log the paragraph count for each, fix the
       outliers before anything downstream is built
-- [ ] `lib/highlight.ts` — `applyFlags`, `clearHighlights`, `focusFlag` using `Range` and
-      `TreeWalker`. Never `innerHTML` replacement. If a quote repeats in its paragraph,
-      wrap the first occurrence
-- [ ] Shadow DOM wrapper for the hover tooltip so the host site's CSS can't touch it
-- [ ] Side panel shell — `App.tsx`, `DocTypeBadge`, `FlagList`, `FlagCard`, `ClaimList`
-- [ ] `FOCUS_FLAG` round trip: click a flag in the panel, page scrolls to it and pulses
-- [ ] Loading and error states — the panel must say something useful on a 429 or a timeout
+- [x] `article/highlight.ts` — `applyFlags`, `clearHighlights`, `focusFlag` using `Range` and
+      `TreeWalker`. Never `innerHTML` replacement. First occurrence wins. Quotes spanning
+      `<a>`/`<em>` wrap per text-node segment; misses and overlaps are skipped and counted
+- [x] Closed Shadow DOM host for the badge, card and tooltip, so the host site's CSS
+      can't touch them and a page script can't reach them
+- [x] Analyze gating (in `content/index.ts` + the popup) — send `/analyze` ONLY on an Analyze
+      click, and only on a trusted event. Disabled while in flight; a repeat run on
+      unchanged content re-renders the stored result. A paragraph-text hash change marks
+      the result stale ("Analyze again") and never auto-runs. The popup offers Analyze
+      only when the page looks like an article
+- [x] In-page UI shell (`ui/`, `content/surface.ts`, closed Shadow DOM) — badge, card, flag tooltip,
+      claim row with a (disabled) Verify button
+- [ ] `CoverageResult` — waiting on `/coverage` wiring
+- [x] Click a flag in the in-page card: page scrolls to it and pulses the highlight
+- [x] Popup holds login (`sign in/up/out`, reset) and the Analyze button; no result
+      rendering beyond a one-line summary. `reset.html` is a full tab, because a popup
+      closes when it loses focus
+- [x] Loading and error states — the badge and the popup both say something useful on a
+      429 or a timeout; no auto-retry on 429
 
 ### Eval (do not leave this until the end)
 
@@ -122,7 +144,7 @@ else from working if it isn't done.
   - [ ] disclose in `notes`: train/dev only, subset size, 2017–2019 corpus, dense labels
 - [ ] `eval/report.py` → `results/latest.json`
 - [ ] `app/routes/evals.py` — `GET /eval/results`, no auth
-- [ ] `components/EvalPage.tsx` — render the numbers live in the side panel
+- [ ] Standalone eval page — render the numbers live from `GET /eval/results` (outside the extension)
 
 ---
 
@@ -280,7 +302,7 @@ else from working if it isn't done.
 
 **Ethan is overloaded.** Infra, CI, auth, cache, the entire extension, and the eval harness
 is roughly two people's work. The extension alone — content script, paragraph splitting,
-highlighting, side panel — is the biggest single chunk in the project. Move the eval
+highlighting, in-page UI — is the biggest single chunk in the project. Move the eval
 harness to whoever finishes their backend work first, likely Jason after `/coverage` lands.
 
 **Eval cannot go last.** It's the track-winning artifact and the reason the Nemotron judges
