@@ -49,7 +49,7 @@ def ensure_quote_in_text(response: str, actual_paragraphs: str) -> bool:
         actual_data = None
 
     nemotron_quotes = []
-    for item_type in ("claims", "flags"):
+    for item_type in ("claims", "flags", "citations"):
         for item in response_data.get(item_type, []):
             nemotron_quotes.append(item["quote"])
 
