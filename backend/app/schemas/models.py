@@ -63,3 +63,12 @@ class RawSpeakerRole(BaseModel):
 
 class RawSpeakerRoleBatch(BaseModel):
     roles: list[RawSpeakerRole] = Field(default_factory=list)
+
+
+class RawRewrite(BaseModel):
+    index: int
+    rewrite: str = ""
+
+
+class RawRewriteBatch(BaseModel):
+    rewrites: list[RawRewrite] = Field(default_factory=list)

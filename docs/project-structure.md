@@ -140,6 +140,45 @@ panel, it's a credibility signal. `model_route` is the tier that labeled the art
 }
 ```
 
+### `POST /rewrite` request
+
+User-triggered. Rewrites the flagged (opinionated) passages from `/analyze` in neutral
+language. The extension builds `items` from `flags`, attaching each flag's paragraph text
+for context. Every `quote` must appear verbatim in its `text`, or the request is a 422.
+At most 40 items.
+
+```json
+{
+  "doc_hash": "sha256:...",
+  "title": "Senate passes funding bill",
+  "items": [
+    {
+      "paragraph_id": 3,
+      "text": "The senator's disastrous, reckless bill passed on Tuesday.",
+      "quote": "disastrous, reckless",
+      "technique": "loaded_language",
+      "explanation": "Charged adjectives frame the bill as harmful."
+    }
+  ]
+}
+```
+
+### `POST /rewrite` response
+
+`original` is echoed from the request, never model output, so it is always the article's
+own wording. The model supplies only `rewrite`; a passage it returns nothing usable for is
+omitted.
+
+```json
+{
+  "doc_hash": "sha256:...",
+  "rewrites": [
+    { "paragraph_id": 3, "original": "disastrous, reckless", "rewrite": "contested" }
+  ],
+  "meta": { "model_route": "large", "latency_ms": 2100 }
+}
+```
+
 ### Technique enum
 
 Lock this list. Free-text technique names will produce forty variants of the same label

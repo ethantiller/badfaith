@@ -6,6 +6,7 @@ import httpx
 
 from backend.app.api.analyze import router as analyze_router
 from backend.app.api.coverage import router as coverage_router
+from backend.app.api.rewrite import router as rewrite_router
 from backend.app.config import get_settings
 from backend.app.db import Database
 from backend.app.deps import set_db
@@ -15,6 +16,7 @@ from backend.app.pipeline.orchestrate import PipelineContext
 
 logger = logging.getLogger(__name__)
 
+API_V1 = "/api/v1"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,8 +53,9 @@ app = FastAPI(title="badfaith", version="0.1.0", lifespan=lifespan, docs_url=Non
 
 add_cors_middleware(app)
 
-app.include_router(analyze_router, prefix="/api/v1")
-app.include_router(coverage_router, prefix="/api/v1")
+app.include_router(analyze_router, prefix=API_V1)
+app.include_router(coverage_router, prefix=API_V1)
+app.include_router(rewrite_router, prefix=API_V1)
 
 @app.get("/health")
 async def health():

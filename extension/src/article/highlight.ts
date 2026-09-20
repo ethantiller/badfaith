@@ -1,7 +1,7 @@
 // Wraps flagged quotes in the live article. Never innerHTML, never node replacement:
 // the news site's own listeners and React roots have to survive this.
 import highlightCss from '../ui/highlight.css?inline';
-import type { Citation, Claim, Flag } from '../types';
+import type { Citation, Claim, Flag, Rewrite } from '../types';
 
 const STYLE_ID = 'badfaith-highlight-styles';
 const FLAG_SELECTOR = 'span[data-badfaith="flag"]';
@@ -342,8 +342,59 @@ function unwrap(span: Element): void {
   parent.normalize();
 }
 
+// The article's own wording, per text node, while a neutral rewrite is showing. Text nodes
+// are edited in place (never replaced), so the site's listeners and roots survive.
+const originalText = new WeakMap<Text, string>();
+
+function textNodesOf(root: Element): Text[] {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
+  return nodes;
+}
+
+/** Puts the article's own wording back over every rewritten quote. */
+export function restoreRewrites(): void {
+  for (const span of document.querySelectorAll(FLAG_SELECTOR)) {
+    for (const node of textNodesOf(span)) {
+      const original = originalText.get(node);
+      if (original === undefined) continue;
+      node.data = original;
+      originalText.delete(node);
+    }
+  }
+}
+
+/**
+ * Swaps each flagged quote's text for its neutral rewrite. A rewrite belongs to the flag
+ * with the same paragraph and quote. The new wording goes in the quote's first text node
+ * and the rest of a split quote is emptied, so the highlight wrappers stay where they are.
+ */
+export function applyRewrites(rewrites: Rewrite[], flags: Flag[]): number {
+  restoreRewrites();
+  const byQuote = new Map(rewrites.map((r) => [`${r.paragraph_id}\u0000${r.original}`, r.rewrite]));
+  let applied = 0;
+
+  flags.forEach((flag, index) => {
+    const rewrite = byQuote.get(`${flag.paragraph_id}\u0000${flag.quote}`);
+    if (rewrite === undefined) return;
+
+    const nodes = Array.from(segmentsOf(FLAG_SELECTOR, 'data-flag-id', flagId(flag, index))).flatMap(textNodesOf);
+    if (nodes.length === 0) return;
+
+    nodes.forEach((node, i) => {
+      originalText.set(node, node.data);
+      node.data = i === 0 ? rewrite : '';
+    });
+    applied += 1;
+  });
+
+  return applied;
+}
+
 /** Leaves the article exactly as it was found. */
 export function clearHighlights(): void {
+  restoreRewrites();
   document.querySelectorAll(ANY_SELECTOR).forEach(unwrap);
   document.documentElement.removeAttribute('data-badfaith-highlights');
 }

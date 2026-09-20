@@ -7,6 +7,8 @@ import {
   applyCitations,
   applyClaims,
   applyFlags,
+  applyRewrites,
+  restoreRewrites,
   citationHighlightCount,
   claimHighlightCount,
   clearHighlights,
@@ -22,7 +24,19 @@ import { parseParagraphs } from '../article/paragraph_parser';
 import { broadcast, isOwnMessage, sendToBackground } from '../messaging';
 import { describeError, isRetryable } from '../messaging/errors';
 import { displayDocType } from '../ui/labels';
-import type { AnalyzeResponse, Citation, Flag, PageState, PageStatus, TabRequest } from '../types';
+import type {
+  AnalyzeResponse,
+  BgResult,
+  Citation,
+  Flag,
+  PageState,
+  PageStatus,
+  Rewrite,
+  RewriteItem,
+  RewriteResponse,
+  RewriteView,
+  TabRequest,
+} from '../types';
 import { wireHighlightHover } from './hover';
 import { createSurface, type Surface } from './surface';
 import { createWatcher } from './watcher';
@@ -42,6 +56,8 @@ const state = {
   result: null as AnalyzeResponse | null,
   hash: null as string | null,
   highlightsVisible: true,
+  rewrites: null as Rewrite[] | null,
+  rewriteView: 'before' as RewriteView,
 };
 
 const watcher = createWatcher(checkForChanges);
@@ -64,6 +80,32 @@ function toggleHighlights(visible: boolean): void {
   setHighlightsVisible(visible);
 }
 
+function showingRewrite(): boolean {
+  return state.rewriteView === 'after' && state.rewrites !== null && state.result !== null;
+}
+
+function setRewriteView(view: RewriteView): void {
+  state.rewriteView = view;
+  watcher.silently(() => {
+    restoreRewrites();
+    if (showingRewrite()) applyRewrites(state.rewrites!, state.result!.flags);
+  });
+}
+
+/**
+ * Runs `read` against the article's own wording. Hashing and quote matching are keyed to
+ * the original text, so a rewrite showing on the page must not leak into them.
+ */
+function withOriginalText<T>(read: () => T): T {
+  if (!showingRewrite()) return read();
+  watcher.silently(restoreRewrites);
+  try {
+    return read();
+  } finally {
+    watcher.silently(() => applyRewrites(state.rewrites!, state.result!.flags));
+  }
+}
+
 /** Puts the page back exactly as it was found. */
 function teardown(): void {
   watcher.silently(clearHighlights);
@@ -76,6 +118,8 @@ function teardown(): void {
   state.result = null;
   state.hash = null;
   state.highlightsVisible = true;
+  state.rewrites = null;
+  state.rewriteView = 'before';
   state.phase = 'idle';
 }
 
@@ -90,6 +134,7 @@ function renderResult(result: AnalyzeResponse): void {
     applyClaims(result.claims, state.nodeMap);
     applyCitations(result.citations ?? [], state.nodeMap);
     setHighlightsVisible(state.highlightsVisible);
+    if (showingRewrite()) applyRewrites(state.rewrites!, result.flags);
   });
 
   setPhase('done');
@@ -98,7 +143,7 @@ function renderResult(result: AnalyzeResponse): void {
 // --- Analysis ---
 
 async function runAnalysis(): Promise<PageStatus> {
-  const parsed = parseParagraphs(document);
+  const parsed = withOriginalText(() => parseParagraphs(document));
   if (!parsed.foundArticleContainer || parsed.paragraphs.length === 0) return status();
 
   state.nodeMap = parsed.nodeMap;
@@ -134,8 +179,46 @@ async function runAnalysis(): Promise<PageStatus> {
 
   state.result = response.data;
   state.hash = hash;
+  // A new analysis has new flags; the old rewrites no longer line up with them.
+  state.rewrites = null;
+  state.rewriteView = 'before';
   renderResult(response.data);
   return status();
+}
+
+/** Rewrites the flagged passages of the analyzed article; the paragraph text lives here. */
+async function runRewrite(): Promise<BgResult<RewriteResponse>> {
+  const result = state.result;
+  if (!result || state.hash === null) {
+    return { ok: false, code: 'invalid_request', message: 'Analyze the article first.' };
+  }
+
+  const parsed = withOriginalText(() => parseParagraphs(document));
+  const text = new Map(parsed.paragraphs.map((p) => [p.id, p.text]));
+  const items: RewriteItem[] = [];
+  for (const flag of result.flags) {
+    const paragraph = text.get(flag.paragraph_id);
+    if (paragraph === undefined || !paragraph.includes(flag.quote)) continue;
+    items.push({
+      paragraph_id: flag.paragraph_id,
+      text: paragraph,
+      quote: flag.quote,
+      technique: flag.technique,
+      explanation: flag.explanation,
+    });
+  }
+
+  const response = await sendToBackground<RewriteResponse>({
+    kind: 'REWRITE_REQUEST',
+    payload: { doc_hash: result.meta.doc_hash, title: document.title, items },
+  });
+
+  // Show the neutral wording straight away; the panel's toggle flips it back.
+  if (response.ok && state.result === result) {
+    state.rewrites = response.data.rewrites;
+    setRewriteView('after');
+  }
+  return response;
 }
 
 function status(): PageStatus {
@@ -151,6 +234,9 @@ function status(): PageStatus {
     message: state.phase === 'error' ? (state.detail.message ?? null) : null,
     result: state.result,
     highlightsVisible: state.highlightsVisible,
+    rewriteReady: state.rewrites !== null && state.rewrites.length > 0,
+    rewrites: state.rewrites,
+    rewriteView: state.rewriteView,
   };
 }
 
@@ -160,7 +246,7 @@ function checkForChanges(): void {
   if (!state.surface) return;
   state.surface.ensureMounted();
 
-  const parsed = parseParagraphs(document);
+  const parsed = withOriginalText(() => parseParagraphs(document));
   if (!parsed.foundArticleContainer || parsed.paragraphs.length === 0) return;
   if (state.phase !== 'done' || !state.result) return;
 
@@ -177,6 +263,7 @@ function checkForChanges(): void {
     watcher.silently(() => {
       applyFlags(flags, state.nodeMap, false);
       setHighlightsVisible(state.highlightsVisible);
+      if (showingRewrite()) applyRewrites(state.rewrites!, flags);
     });
   }
 
@@ -240,9 +327,34 @@ chrome.runtime.onMessage.addListener((message: TabRequest, sender, sendResponse)
     return true; // keep the port open for the async reply
   }
 
+  if (message?.kind === 'SET_REWRITE_VIEW') {
+    setRewriteView(message.view);
+    sendResponse(status());
+    return false;
+  }
+
+  if (message?.kind === 'RUN_REWRITE') {
+    runRewrite().then(sendResponse, (error) =>
+      sendResponse({ ok: false, code: 'network', message: String(error) }),
+    );
+    return true;
+  }
+
   if (message?.kind === 'FOCUS_FLAG') {
     focusFlag(message.id);
     if (!state.highlightsVisible) toggleHighlights(true);
+    return false;
+  }
+
+  if (message?.kind === 'FOCUS_REWRITE') {
+    const flags = state.result?.flags ?? [];
+    const index = flags.findIndex(
+      (flag) => flag.paragraph_id === message.paragraph_id && flag.quote === message.original,
+    );
+    if (index >= 0) {
+      focusFlag(flagId(flags[index], index));
+      if (!state.highlightsVisible) toggleHighlights(true);
+    }
     return false;
   }
 

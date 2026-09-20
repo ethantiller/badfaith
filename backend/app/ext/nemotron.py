@@ -54,6 +54,8 @@ class NemotronClient:
         *,
         retries: int = 4,
         thinking: bool = False,
+        temperature: float = 0.0,
+        top_p: float | None = None,
     ) -> T:
         """Send the prompt, return a parsed `schema` instance.
 
@@ -62,13 +64,21 @@ class NemotronClient:
         constrained-decoding `response_format` so the model can't emit malformed JSON (it
         was duplicating keys, e.g. `"severity": "severity": ...`). `thinking` turns
         the model's reasoning mode on; it is slower, so it is off unless a stage needs it.
+        `temperature` defaults to 0.0 (deterministic, which detection needs); a generative stage
+        passes its own, with `top_p` if wanted. `top_p` is left out of the request when None.
         """
         messages = [{"role": "user", "content": prompt}]
         error: Exception | None = None
 
         for attempt in range(2):  # first try, then one reprompt
             content = await self._chat(
-                messages, model, retries=retries, thinking=thinking, schema=schema
+                messages,
+                model,
+                retries=retries,
+                thinking=thinking,
+                schema=schema,
+                temperature=temperature,
+                top_p=top_p,
             )
             try:
                 return schema.model_validate_json(_extract_json(content))
@@ -91,15 +101,19 @@ class NemotronClient:
         retries: int,
         thinking: bool,
         schema: type[BaseModel] | None = None,
+        temperature: float = 0.0,
+        top_p: float | None = None,
     ) -> str:
         payload = {
             "model": model,
             "messages": messages,
-            "temperature": 0.0,
+            "temperature": temperature,
             "max_tokens": 16384 if thinking else 4096,
             # sent at the top level of the body; the OpenAI SDK's `extra_body` merges to here
             "chat_template_kwargs": {"enable_thinking": thinking},
         }
+        if top_p is not None:
+            payload["top_p"] = top_p
         if schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",
