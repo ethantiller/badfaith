@@ -51,6 +51,15 @@ export function createTooltip(): TooltipView {
     const left = Math.min(Math.max(centred, EDGE), window.innerWidth - own.width - EDGE);
 
     element.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+
+    // Scale out from the edge nearest the phrase, so the summary reads as coming
+    // from that phrase rather than arriving on its own.
+    const anchorX = rect.left + rect.width / 2 - left;
+    const originX = Math.min(Math.max(anchorX, 0), own.width || 1);
+    element.style.setProperty(
+      '--bf-tip-origin',
+      `${Math.round(originX)}px ${top === above ? '100%' : '0%'}`,
+    );
   }
 
   function open(anchor: Element, flag: Flag): void {
