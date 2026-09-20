@@ -32,8 +32,8 @@ badfaith/
 ## 1. Shared contract
 
 Defined once, mirrored in two languages. Python is the source of truth
-(`backend/app/schemas/`); the TypeScript version is hand-mirrored in
-`extension/lib/types.ts`. Do not generate one from the other — codegen setup costs more
+(`backend/app/types.py`); the TypeScript version is hand-mirrored in
+`extension/src/types.ts`. Do not generate one from the other — codegen setup costs more
 than the 80 lines you'd save.
 
 ### `POST /analyze` request
@@ -53,6 +53,10 @@ than the 80 lines you'd save.
 `section_hint` is what the content script scraped from URL path, `<meta>` section tags, or
 schema.org `articleSection`. `null` means nothing found — backend falls back to a model
 call.
+
+Size caps sit on the Pydantic model, so an oversized payload is a 422 before any handler
+runs: 400 paragraphs, 5,000 characters per paragraph, a 2,048-character URL, a
+512-character title.
 
 ### `POST /analyze` response
 
@@ -438,119 +442,21 @@ pipeline and the eval harness.
 
 ## 3. Extension
 
-```
-extension/
-├── wxt.config.ts
-├── package.json
-├── tsconfig.json
-├── entrypoints/
-│   ├── background.ts
-│   ├── content.ts
-│   └── sidepanel/
-│       ├── index.html
-│       ├── main.tsx
-│       └── App.tsx
-├── components/
-│   ├── FlagList.tsx
-│   ├── FlagCard.tsx
-│   ├── ClaimList.tsx
-│   ├── CoveragePanel.tsx
-│   ├── DocTypeBadge.tsx
-│   └── EvalPage.tsx
-├── lib/
-│   ├── types.ts (API + auth types)
-│   ├── auth.ts (Supabase email auth)
-│   ├── api_helpers.ts (token refresh, error handling)
-│   ├── analyze.ts (POST /analyze)
-│   ├── coverage.ts (POST /coverage)
-│   ├── extract.ts (Readability)
-│   ├── paragraphs.ts (article → paragraphs)
-│   ├── highlight.ts (apply flags to DOM)
-│   ├── metadata.ts (detect section)
-│   └── messaging.ts (message types)
-└── assets/
-```
+Vite + React + TypeScript, Manifest V3, loaded unpacked. The full tree, the three-pass
+build and the per-file notes live in **`docs/project-structure.md` §3**; that is the one
+copy, so this section stays short rather than drifting away from it.
 
-### `wxt.config.ts`
-Manifest config. `permissions: ["storage", "sidePanel", "activeTab"]`,
-`host_permissions` listing **only your five tested news domains**, no
-`externally_connectable`. Content script `matches` mirrors the host list.
+The shape in one paragraph: the **popup** holds sign-in and the Analyze button; the
+**background service worker** is the only context with a token or a `fetch` call; the
+**content script** renders nothing until the popup asks, then injects highlights, hover
+summaries and a report card into the article inside a closed shadow root. The paragraph
+ID to live-element map stays in the content script and never crosses a message boundary.
+Requests are checked against the `AnalyzeRequest` schema before they are sent, so a bad
+payload fails with a message that names the problem instead of an opaque 422.
 
-### `lib/types.ts`
-Hand-mirror of the Python schemas, plus the message envelope:
-```ts
-type Msg =
-  | { kind: "ANALYZE_REQUEST" }
-  | { kind: "ANALYZE_RESULT"; payload: AnalyzeResponse }
-  | { kind: "ANALYZE_ERROR"; error: string }
-  | { kind: "COVERAGE_REQUEST"; claimId: string }
-  | { kind: "COVERAGE_RESULT"; payload: CoverageResponse }
-  | { kind: "FOCUS_FLAG"; paragraphId: number; quote: string };
-```
-`FOCUS_FLAG` is the side panel telling the content script to scroll to and pulse a
-highlight. Cheap to build, disproportionately good in a demo.
-
-### `entrypoints/background.ts`
-The trusted core. Registers `chrome.runtime.onMessage`, rejects any message where
-`sender.id !== chrome.runtime.id`. Holds no module-level mutable state — Chrome evicts
-idle workers, so anything durable goes to `chrome.storage.session`. Opens the side panel
-on action click. All network calls originate here.
-
-### `entrypoints/content.ts`
-Runs in the page. No token ever reaches this file. On `ANALYZE_REQUEST`: extract, number,
-scrape metadata, send to background, await result, inject highlights. Keeps the
-`Map<number, HTMLElement>` of paragraph ID to live DOM node in memory — it never crosses
-a message boundary.
-
-### `lib/extract.ts`
-```ts
-export function extractArticle(doc: Document): { title: string; root: HTMLElement } | null
-```
-Readability against a `doc.cloneNode(true)` — Readability mutates the document it's given,
-and mutating the live page breaks your highlight targets.
-
-### `lib/paragraphs.ts`
-```ts
-export function toParagraphs(root: HTMLElement): {
-  paragraphs: Paragraph[];
-  nodeMap: Map<number, HTMLElement>;
-}
-```
-**The riskiest file in the project.** Every site nests article text differently. Skip
-elements under 40 characters, skip figure captions and pull quotes, and log the resulting
-paragraph count per domain during testing. If this produces different structures across
-your five sites, every downstream `paragraph_id` is wrong.
-
-### `lib/metadata.ts`
-```ts
-export function detectSection(doc: Document, url: string): "opinion" | "news" | null
-```
-Checks URL path segments (`/opinion/`, `/commentary/`, `/editorial/`),
-`<meta property="article:section">`, and schema.org `articleSection`. Returns `null`
-freely — a wrong hint is worse than no hint.
-
-### `lib/highlight.ts`
-```ts
-export function applyFlags(flags: Flag[], nodeMap: Map<number, HTMLElement>): void
-export function clearHighlights(): void
-export function focusFlag(paragraphId: number, quote: string): void
-```
-Uses `Range` and `TreeWalker` to wrap the quote inside one known element. Never
-`innerHTML` replacement — that destroys event listeners the news site depends on and can
-blank the page. Tooltip content in a Shadow DOM. If the quote appears more than once
-in the paragraph, wrap the first occurrence — the same rule the grounding gate and the
-SemEval runner use.
-
-### `lib/api_helpers.ts`
-Shared HTTP utilities for all API calls. Exports: `ApiError`, `makeAuthenticatedRequest<T>()` (handles 401 refresh+retry), `buildHeaders()`, `generateRequestId()`, `getErrorMessage()`. Reads base URL from `import.meta.env.API_BASE`.
-
-### `lib/analyze.ts` and `lib/coverage.ts`
-Background-only API clients. Exports: `sendAnalyzeRequest(request)` and `sendCoverageRequest(request)`. Both automatically get the token from Supabase and handle 401 errors with token refresh and retry.
-
-### `lib/auth.ts`
-Supabase email auth with `chrome.storage.local` persistence. Exports: `signUp()`, `signIn()`, `signOut()`, `resetPassword()`, `updatePassword()`, `getIdToken()`, `getSession()`, `refreshSession()`, `initAuth()`. Tokens persist across browser restarts and auto-refresh in the background. Background-only.
-
----
+Build and load it with `cd extension && make build`, then load `extension/dist/` unpacked.
+See `extension/README.md` for the environment variables and the Supabase redirect URL that
+password reset needs.
 
 ## 4. Eval harness
 

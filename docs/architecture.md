@@ -12,8 +12,8 @@ live elsewhere.
 
 | Layer | Choice | Language |
 |---|---|---|
-| Browser extension | WXT + React, Manifest V3 | TypeScript |
-| In-page extraction | Mozilla Readability | TypeScript |
+| Browser extension | Vite + React, Manifest V3 | TypeScript |
+| In-page extraction | `lib/paragraph_parser.ts` (container heuristics) | TypeScript |
 | Backend API | FastAPI + Uvicorn | Python 3.12 |
 | Model calls | Nemotron via build.nvidia.com or OpenRouter, over `httpx` async | Python |
 | Cache + counters | Supabase (PostgreSQL) | SQL |
@@ -21,7 +21,7 @@ live elsewhere.
 | Outside sources | GDELT DOC API | Python |
 | Eval harness | Standalone Python CLI, writes JSON | Python |
 | Container | Docker, distroless or slim base | — |
-| Hosting | Cloud Run (backend), Firebase Hosting or the side panel itself (eval page) | — |
+| Hosting | Cloud Run (backend), static hosting for the eval page | — |
 | CI | GitHub Actions → Artifact Registry → Cloud Run | YAML |
 | Package managers | `uv` or `pip-tools` (Python), `pnpm` (extension) | — |
 
@@ -47,8 +47,9 @@ The user opens a news article on a supported site.
 
 3. **The request goes through the background worker.** The content script sends a message
    to the background service worker, which is the only part of the extension that holds
-   credentials or talks to the network. It attaches a Firebase ID token and POSTs to the
-   backend.
+   credentials or talks to the network. It attaches the Supabase access token and POSTs to
+   the backend. The content script sends this **only when the user clicks Analyze in the
+   popup** (section 3.1), never automatically.
 
 4. **The backend checks cache first.** Cache key is a hash of the URL plus a hash of the
    article text, so a re-edited article misses the cache correctly. On a hit, it returns
@@ -58,11 +59,11 @@ The user opens a news article on a supported site.
    calls, verifies every quote the model returns, queries GDELT for other coverage, and
    assembles a single response keyed to the paragraph IDs the extension sent.
 
-6. **The extension renders two surfaces.** The content script walks each flagged
+6. **The content script renders everything in the page.** It walks each flagged
    `paragraph_id`, finds the quote string inside that one known DOM element, and wraps it
-   in a highlight with a hover tooltip. The side panel shows the full report: techniques
-   found, claims with verification status, other outlets covering the story, and what
-   this article omitted.
+   in a highlight with a hover tooltip. Doc type, technique summary, claims and the
+   user-triggered "Verify" action (which calls `/coverage`) all live in in-page UI
+   injected by the content script (section 3.1). There is no separate report surface.
 
 7. **The result is written to cache** with a TTL, so a demo article opened twice responds
    instantly the second time.
@@ -88,20 +89,106 @@ owns all `fetch` calls, owns the message handlers. Holds no state in module-leve
 because Chrome evicts idle workers; anything that must survive goes to `chrome.storage`.
 Rejects messages whose `sender.id` isn't our own extension ID.
 
-**Side panel** — a React app, the richest UI surface. Report view, plus the eval results
-page (section 7). Being a normal web page, it can use whatever component library we want;
-keep it light.
+**Popup** — a small React app: sign up, sign in, sign out, password reset, **and the
+Analyze button**. It shows no analysis results beyond a one-line summary. There is no side
+panel and no in-extension report page. The trigger lives here rather than on the page so
+that an ordinary tab carries no Bad Faith UI at all — the content script renders nothing
+until the user asks.
+
+A separate full-tab page, `reset.html`, completes the password-recovery email link: a
+popup closes the moment it loses focus, so that flow cannot finish there.
 
 The manifest deliberately omits `externally_connectable`, so no website can message the
 extension directly. Host permissions start narrow — five reliable sites beat fifty flaky
 ones, because Readability behaves differently on every domain and a demo failure is
 fatal. As coverage expands, permissions can be broadened to all HTTPS sites by updating
-`host_permissions` in `wxt.config.ts` and validating extraction quality on each new domain.
+`host_permissions` in `public/manifest.json` and validating extraction quality on each new domain.
 
 **Article parsing stays client-side by design.** The backend never re-fetches the URL.
 The browser already has the rendered page, including content behind a paywall the user
 is entitled to and text injected by the site's own JavaScript, and news sites routinely
 block requests originating from cloud IP ranges.
+
+### 3.1 UI plan: the trigger is in the popup, the report is in the page
+
+The extension's own screens are the login popup and the password-reset tab. The popup also
+holds the Analyze button. Everything the reader sees *about the article* is injected into
+the article page, so they read the story and the audit in the same place.
+
+**Nothing is rendered on a page until the user asks.** On load the content script only
+registers a message listener. It parses paragraphs locally, with no network call, when the
+popup asks for status. An ordinary page therefore carries no Bad Faith DOM, no observer and
+no styles at all.
+
+**Surfaces:**
+
+- **Popup** — reports whether the current tab holds an article ("14 paragraphs ready to
+  read" / "No article text here") and offers **Analyze this article**. Signed-out users see
+  the login form instead. After a run it summarises the result in one line and offers
+  Analyze again.
+- **Highlights** on flagged quotes, wrapped with `Range`/`TreeWalker`, never `innerHTML`.
+  Hover or keyboard focus shows a tooltip: technique, severity, confidence, explanation,
+  paragraph number.
+- **Badge** — a small fixed-position pill, bottom right, which exists only from the moment
+  analysis starts. It shows the loading state, then document type and flag count, and
+  expands into a compact card listing techniques and claims. Clicking a flag in the card
+  scrolls to and pulses its highlight. "Clear" removes the badge, the card and every
+  wrapper, leaving the page as found.
+- **Error states** — rendered in the badge and in the popup ("Too many requests. Try again
+  later."). A failure never blocks or alters the article text.
+
+**Isolation.** Every injected element other than the highlight wrappers lives in a **closed**
+Shadow DOM host, so site CSS cannot restyle it, ours cannot leak out, and a page script
+cannot reach the controls at all. Clicks are additionally ignored unless `event.isTrusted`,
+so nothing on the page can spend model credits. Highlight wrappers carry a namespaced
+attribute (`data-badfaith`) so `clearHighlights()` can remove them cleanly, and their rules
+live in one namespaced `<style>` in the light DOM — selected as `html body span[…]` with
+`!important`, because the wrappers must sit inside the article's own text where the site's
+stylesheet would otherwise win.
+
+**Highlight appearance.** A translucent blue gradient that sweeps left to right over about
+3.6 seconds, plus a faint blue underline that carries the highlight on dark article
+backgrounds where the wash nearly vanishes. Text colour is never touched. Severity
+modulates the wash's alpha, never its hue: this tool reports a technique, not a verdict.
+`prefers-reduced-motion` gets a static wash. The CSS Custom Highlight API was rejected
+because `::highlight()` supports neither gradients nor animation.
+
+**Re-analysis.** Clicking Analyze parses fresh, sends one `/analyze` request, and renders
+the result. While the request is in flight the badge is disabled, so nothing can send twice.
+A second run on unchanged content re-renders the stored result instead of sending again,
+keyed on a hash of the paragraph texts. If the paragraph set changes afterwards (SPA
+navigation, live-blog append), a debounced `MutationObserver` marks the result stale and the
+badge offers "Analyze again"; the extension never re-runs on its own. The observer is
+disconnected while we wrap quotes, so our own edits are never mistaken for the site's. A
+refresh is a fresh page: the user clicks again, and the backend cache (URL plus paragraph
+hash) makes that cheap and must not spend model credits twice.
+
+**Doc type.** A separate helper inspects the page (URL path, `article:section`, schema.org
+`articleSection`) and returns `"opinion"` or `null`. The content script passes that as
+`section_hint`; the backend short-circuits on a non-null hint and otherwise lets the
+model classify.
+
+**Manifest.** Two additions beyond the original scaffold, both minimal:
+`background.service_worker` pointing at `background.js`, and a `web_accessible_resources`
+entry exposing `reset.html` to `https://*.supabase.co/*` only — Supabase's verify endpoint
+is what navigates to the recovery page, and scoping it there keeps the extension ID
+unprobeable by arbitrary sites. Content-script `matches` are unchanged.
+
+**The request is checked against the contract before it is sent.**
+`lib/contract.ts::buildAnalyzeRequest` mirrors `AnalyzeRequest`'s caps and is the only way
+into `sendAnalyzeRequest`, so a malformed payload fails here with a message that names the
+problem instead of coming back as an opaque 422. Overflow that a real article can hit —
+more than 400 paragraphs, an over-long paragraph or title — is clamped rather than
+rejected, because losing the tail of a live blog beats losing the analysis; paragraph IDs
+come from the parser and are never renumbered, so every `paragraph_id` in the response
+still resolves against the content script's element map. Structural faults (no URL, no
+paragraphs, an unknown `section_hint`) throw, because they mean a bug on this side.
+
+`unknown` is a display value only (`ui/labels.ts`, `DisplayDocType`) and never appears on
+the wire. `section_hint` is `"opinion" | null`, and a null hint is what makes `/analyze`
+work the section out from the paragraphs, so a response always carries a real `doc_type`.
+Unknown is what the badge, card and popup print if one ever does not — better than
+asserting "News report" over a document nothing classified.
 
 ---
 
@@ -115,7 +202,8 @@ Request:
 ```json
 {
   "url": "https://example.com/article",
-  "title": "...",
+  "title": "Senate passes funding bill",
+  "section_hint": "opinion | news | null",
   "paragraphs": [
     { "id": 0, "text": "..." },
     { "id": 1, "text": "..." }
@@ -123,26 +211,33 @@ Request:
 }
 ```
 
+Size caps live at the Pydantic layer, so an oversized payload is rejected before any
+handler runs: at most 400 paragraphs, 5,000 characters per paragraph, a 2,048-character
+URL and a 512-character title.
+
 Response:
 
 ```json
 {
   "doc_type": "news | opinion | other",
+  "doc_type_source": "metadata | model",
   "flags": [
     {
       "paragraph_id": 1,
-      "quote": "exact substring from that paragraph",
+      "quote": "reckless scheme",
       "technique": "loaded_language",
       "severity": "low | medium | high",
-      "explanation": "..."
+      "confidence": 0.82,
+      "explanation": "One sentence, no hedging."
     }
   ],
   "claims": [
     {
+      "id": "c0",
       "paragraph_id": 3,
-      "quote": "...",
-      "status": "supported | contradicted | unverified",
-      "sources": [ { "outlet": "...", "url": "...", "snippet": "..." } ]
+      "quote": "unemployment fell to 3.8 percent",
+      "claim_type": "statistic | attributed_quote | date_or_count",
+      "entities": ["unemployment", "August 2026"]
     }
   ],
   "coverage": {
@@ -152,6 +247,9 @@ Response:
   "meta": { "cached": false, "model_route": "small|large", "latency_ms": 0 }
 }
 ```
+
+Claims carry no verification status here. Verification is `/coverage`, which is
+user-triggered and returns related sources and omissions of its own.
 
 Two properties matter. Every finding carries a `paragraph_id`, so the extension searches
 one element instead of the whole page. Every finding carries a verbatim `quote`, so
@@ -363,8 +461,8 @@ labels are hidden, so it runs on train and dev only, on a fixed-seed subset of a
 articles fetched from Zenodo (CC BY 4.0). The run steps, mapping table and disclosures
 are in `project-structure.md` under `runners/semeval_spans.py`.
 
-Output surfaces on an **eval page inside the side panel**, reading from
-`GET /eval/results`. Judges clicking through live numbers beats a screenshot in slides.
+Output surfaces on a **standalone eval page** outside the extension (the extension has
+no report UI), reading from `GET /eval/results`. Judges clicking through live numbers beats a screenshot in slides.
 
 ---
 
@@ -409,5 +507,5 @@ All of it environment-driven; none of it hardcoded.
 ## 10. Deliberately out of scope
 
 Named here so nobody spends hours on them at 4am: Google sign-in, Chrome Web Store
-publication, Firefox or Safari builds, a user account or history UI, multi-language
+publication, Firefox or Safari builds, a user account or history UI, a side panel or any extension-owned report UI, multi-language
 article support, fine-tuning any model, and self-hosting Nemotron on our own GPU.

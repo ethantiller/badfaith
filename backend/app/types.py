@@ -6,6 +6,16 @@ from typing import Literal, Self
 from pydantic import BaseModel, Field, model_validator
 
 
+# --- Request size caps ---
+# Enforced at the schema layer so an oversized payload is rejected before any
+# handler runs. See docs/architecture.md section 6, "Security posture".
+
+MAX_PARAGRAPHS = 400
+MAX_PARAGRAPH_CHARS = 5_000
+MAX_URL_CHARS = 2_048
+MAX_TITLE_CHARS = 512
+
+
 # --- Enums ---
 
 class Technique(StrEnum):
@@ -177,6 +187,12 @@ __all__ = [
     "Omission",
     "CoverageMeta",
     "CoverageResponse",
+    "MAX_PARAGRAPHS",
+    "MAX_PARAGRAPH_CHARS",
+    "MAX_URL_CHARS",
+    "MAX_TITLE_CHARS",
+    "Paragraph",
+    "AnalyzeRequest",
     "Flag",
     "Claim",
     "AnalyzeMeta",

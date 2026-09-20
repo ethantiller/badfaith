@@ -1,0 +1,110 @@
+/* One place for colour, type, radius, light and motion. Imported by the popup, the
+   reset page and the shadow-root stylesheet, so the two surfaces cannot drift.
+   `:host` is what reaches the injected UI; `:root` is what reaches the pages.
+
+   The scheme is one idea: cool pigment, warm light. Bad Faith marks up someone
+   else's page the way a copy editor marks a manuscript — ultramarine, the oldest
+   ink blue — and everything the reader touches answers with light rather than with
+   another colour. There is exactly one accent hue, so a glow can never read as a
+   second opinion about the article. */
+
+:root,
+:host {
+  /* Paper. Warm by about a percent — enough to keep ultramarine reading as pigment
+     on a page, not far enough to be cream. */
+  --bf-surface: #fbfaf8;
+  --bf-surface-sunken: #f2f0ec;
+  /* Panels sit over live article text. The fill is opaque enough that nothing
+     behind them is readable; the blur is what keeps the page's light and colour
+     present through the panel. */
+  --bf-glass: rgba(252, 251, 249, 0.9);
+
+  --bf-text: #1d1b22;
+  --bf-text-dim: #625d6b;
+  --bf-line: #e4e0da;
+  --bf-danger: #a8392c;
+
+  /* The mark. */
+  --bf-accent: #2a4dc0;
+  --bf-accent-strong: #1e3a99;
+  --bf-accent-soft: rgba(42, 77, 192, 0.08);
+  --bf-accent-line: rgba(42, 77, 192, 0.28);
+  --bf-on-accent: #ffffff;
+
+  /* The lamp: one colour of light, three strengths. */
+  --bf-glow-near: rgba(42, 77, 192, 0.16);
+  --bf-glow-far: rgba(42, 77, 192, 0.3);
+  --bf-glow-ring: rgba(42, 77, 192, 0.14);
+
+  /* Radius carries hierarchy: a panel is not a chip is not a row. */
+  --bf-radius: 14px;
+  --bf-radius-sm: 9px;
+  --bf-radius-xs: 6px;
+
+  /* Layered, and tinted with the accent at the widest layer, so a panel reads as lit
+     from within rather than stamped onto the page with grey. */
+  --bf-shadow:
+    0 0 0 1px rgba(29, 27, 34, 0.05),
+    0 1px 2px rgba(29, 27, 34, 0.06),
+    0 10px 24px -8px rgba(29, 27, 34, 0.16),
+    0 28px 56px -16px rgba(30, 58, 153, 0.2);
+  --bf-shadow-lift:
+    0 0 0 1px rgba(42, 77, 192, 0.14),
+    0 2px 4px rgba(29, 27, 34, 0.06),
+    0 12px 28px -8px rgba(29, 27, 34, 0.18),
+    0 20px 44px -12px rgba(30, 58, 153, 0.3);
+
+  --bf-fast: 140ms;
+  --bf-base: 260ms;
+  /* A long, flat tail: movement decelerates for most of its duration, which is what
+     reads as "smooth" rather than "quick". */
+  --bf-ease: cubic-bezier(0.22, 0.61, 0.25, 1);
+  /* Just enough overshoot to feel sprung, not enough to bounce. */
+  --bf-spring: cubic-bezier(0.34, 1.32, 0.44, 1);
+
+  --bf-font:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  /* Titles are set in the serif the articles themselves are set in. No webfont: a
+     content script must not make a network request on every page it lands on, and
+     Georgia is everywhere the extension runs. */
+  --bf-display:
+    Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Times New Roman',
+    serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  :host {
+    /* Warm charcoal, not blue-grey: the blue has to stay the only blue on screen. */
+    --bf-surface: #1a1920;
+    --bf-surface-sunken: #242230;
+    --bf-glass: rgba(26, 25, 32, 0.92);
+
+    --bf-text: #ece8e3;
+    --bf-text-dim: #9c96a6;
+    --bf-line: #322e3c;
+    --bf-danger: #e8998c;
+
+    --bf-accent: #8aa5ff;
+    --bf-accent-strong: #aec0ff;
+    --bf-accent-soft: rgba(138, 165, 255, 0.12);
+    --bf-accent-line: rgba(138, 165, 255, 0.32);
+    --bf-on-accent: #14131a;
+
+    --bf-glow-near: rgba(138, 165, 255, 0.2);
+    --bf-glow-far: rgba(138, 165, 255, 0.34);
+    --bf-glow-ring: rgba(138, 165, 255, 0.18);
+
+    --bf-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.06),
+      0 2px 6px rgba(0, 0, 0, 0.5),
+      0 20px 48px -14px rgba(0, 0, 0, 0.7),
+      0 0 64px -24px rgba(138, 165, 255, 0.4);
+    --bf-shadow-lift:
+      0 0 0 1px rgba(138, 165, 255, 0.24),
+      0 2px 8px rgba(0, 0, 0, 0.5),
+      0 18px 40px -12px rgba(0, 0, 0, 0.7),
+      0 0 52px -16px rgba(138, 165, 255, 0.5);
+  }
+}
