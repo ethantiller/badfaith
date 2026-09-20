@@ -1,0 +1,357 @@
+/* The side panel shell: brand header, a stage that centres whatever is in it, and an
+   account footer. The report itself is styled in report.css. */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+.bf-sidepanel {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Sign-in, the idle Analyze button and empty-page messages all centre here. */
+.bf-stage {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.bf-stage[data-fill] {
+  align-items: stretch;
+  justify-items: stretch;
+  overflow: hidden;
+}
+
+/* Caps line length for anything centred in the stage. */
+.bf-stage-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.bf-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* --- Analyze motion ---
+   Idle button centred -> it lifts away -> a compact status row slides in at the top
+   -> the dots fade in where the button was. Each step is chained with
+   animation-delay, so nothing here needs a JS timer. */
+
+.bf-analyze-cta {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--bf-base) var(--bf-ease),
+    transform var(--bf-base) var(--bf-ease);
+}
+
+.bf-analyze-cta[data-leaving] {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+  pointer-events: none;
+}
+
+.bf-busy {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: 100%;
+  height: 100%;
+}
+
+.bf-busy-status {
+  margin: 0;
+  align-self: start;
+  animation: bf-status-in var(--bf-base) var(--bf-ease) both;
+}
+
+.bf-busy-dots {
+  display: grid;
+  place-items: center;
+  animation: bf-fade-in var(--bf-base) var(--bf-ease) calc(var(--bf-base) * 0.75) both;
+}
+
+@keyframes bf-status-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes bf-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.bf-dots {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bf-dots span {
+  width: 7px;
+  height: 7px;
+  background: var(--bf-accent);
+  border-radius: 50%;
+  animation: bf-dot-bounce calc(var(--bf-base) * 3) var(--bf-spring) infinite;
+}
+
+.bf-dots span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.bf-dots span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+@keyframes bf-dot-bounce {
+  0%,
+  80%,
+  100% {
+    opacity: 0.45;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes bf-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* page.css collapses every animation under reduced motion; the dots are the thing
+   that says "still working", so they keep going, but as a pulse instead of a bounce. */
+@media (prefers-reduced-motion: reduce) {
+  .bf-dots span {
+    animation: bf-dot-pulse 1.4s ease-in-out infinite !important;
+  }
+}
+
+/* --- The report --- */
+
+.bf-report {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--bf-glass);
+  border: 1px solid var(--bf-line);
+  border-radius: var(--bf-radius);
+  box-shadow: var(--bf-shadow);
+  overflow: hidden;
+}
+
+.bf-report-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 15px 16px 12px;
+}
+
+.bf-report-titles {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.bf-report-title {
+  margin: 0;
+  font: 400 19px/1.25 var(--bf-display);
+  letter-spacing: -0.005em;
+}
+
+.bf-report-sub {
+  margin: 3px 0 0;
+  font: 400 12px/1.4 var(--bf-font);
+  color: var(--bf-text-dim);
+}
+
+.bf-report-head .bf-notice,
+.bf-report-head .bf-error {
+  font-size: 12px;
+}
+
+.bf-report-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px;
+  border-top: 1px solid var(--bf-line);
+}
+
+/* --- Tabs: one underline that slides between three equal cells --- */
+
+.bf-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid var(--bf-line);
+}
+
+.bf-tabs::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: calc(100% / 3);
+  height: 2px;
+  background: var(--bf-accent);
+  transform: translateX(calc(var(--bf-tab-index, 0) * 100%));
+  transition: transform var(--bf-base) var(--bf-spring);
+}
+
+.bf-tab-button {
+  padding: 10px 6px;
+  font: 500 13px/1.3 var(--bf-font);
+  color: var(--bf-text-dim);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: color var(--bf-fast) var(--bf-ease);
+}
+
+.bf-tab-button:hover,
+.bf-tab-button[aria-selected='true'] {
+  color: var(--bf-text);
+}
+
+.bf-tabpanel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bf-line) transparent;
+  animation: bf-fade-in var(--bf-base) var(--bf-ease) both;
+}
+
+.bf-tabpanel:focus-visible {
+  outline-offset: -2px;
+}
+
+/* --- Claims --- */
+
+.bf-claim {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font: 400 13px/1.45 var(--bf-font);
+  color: var(--bf-text);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--bf-line);
+  cursor: pointer;
+  transition: background-color var(--bf-base) var(--bf-ease);
+}
+
+.bf-claim:hover {
+  background: var(--bf-accent-soft);
+}
+
+.bf-claim-quote {
+  display: block;
+}
+
+.bf-claim-type {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}
+
+.bf-entities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.bf-entity {
+  padding: 1px 8px;
+  font: 400 11px/1.5 var(--bf-font);
+  color: var(--bf-text-dim);
+  border: 1px solid var(--bf-line);
+  border-radius: 999px;
+}
+
+/* --- Coverage --- */
+
+.bf-coverage-center {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  min-height: 100%;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.bf-coverage-center .bf-lede {
+  max-width: 260px;
+}
+
+.bf-coverage-summary {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.bf-source {
+  display: block;
+  padding: 9px 0;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--bf-line);
+}
+
+.bf-source:last-child {
+  border-bottom: 0;
+}
+
+.bf-source-outlet {
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}
+
+.bf-source-headline {
+  display: block;
+  font-weight: 500;
+  color: var(--bf-accent-strong);
+}
+
+.bf-source:hover .bf-source-headline {
+  text-decoration: underline;
+}
+
+.bf-source-snippet {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}

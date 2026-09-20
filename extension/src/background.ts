@@ -3,6 +3,7 @@
 // anything durable already lives in chrome.storage via the Supabase client.
 import { ApiError, getErrorMessage } from './api/client';
 import { sendAnalyzeRequest } from './api/analyze';
+import { sendCoverageRequest } from './api/coverage';
 import { ContractError } from './api/contract';
 import {
   getSession,
@@ -14,6 +15,9 @@ import {
 } from './auth';
 import { isOwnMessage } from './messaging';
 import type { AuthState, BgErrorCode, BgRequest, BgResult } from './types';
+
+// Makes the toolbar icon open the side panel instead of a popup.
+void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
 function classify(error: unknown): BgErrorCode {
   // A bad payload is our bug, not the network's, and a retry cannot fix it.
@@ -59,7 +63,7 @@ async function requireSession(): Promise<void> {
   if (session) return;
 
   // Fail before the round trip rather than spending one on a guaranteed 401.
-  throw new ApiError(401, 'Unauthorized', 'Sign in from the extension icon to analyze.');
+  throw new ApiError(401, 'Unauthorized', 'Sign in from the extension icon to use Bad Faith.');
 }
 
 function handle(message: BgRequest): Promise<BgResult<unknown>> {
@@ -68,6 +72,12 @@ function handle(message: BgRequest): Promise<BgResult<unknown>> {
       return attempt(async () => {
         await requireSession();
         return sendAnalyzeRequest(message.payload);
+      });
+
+    case 'COVERAGE_REQUEST':
+      return attempt(async () => {
+        await requireSession();
+        return sendCoverageRequest(message.payload);
       });
 
     case 'AUTH_STATUS':

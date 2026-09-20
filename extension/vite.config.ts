@@ -73,12 +73,6 @@ export default defineConfig(({ mode }) => {
 
   if (target === 'content') return { ...env, ...iifeBundle('src/content/index.ts', 'content') };
   if (target === 'background') return { ...env, ...iifeBundle('src/background.ts', 'background') };
-  // Dev-only design harness; writes next to dev/index.html, never into dist/.
-  if (target === 'preview') {
-    const config = iifeBundle('dev/preview.ts', 'preview');
-    config.build!.outDir = 'dev';
-    return { ...env, ...config };
-  }
 
   return {
     ...env,
@@ -88,7 +82,7 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: false,
       rollupOptions: {
         input: {
-          popup: resolve(__dirname, 'src/pages/popup/main.tsx'),
+          sidepanel: resolve(__dirname, 'src/pages/sidepanel/main.tsx'),
           reset: resolve(__dirname, 'src/pages/reset/main.tsx'),
         },
         output: {

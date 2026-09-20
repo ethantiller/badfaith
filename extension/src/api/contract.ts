@@ -2,12 +2,14 @@
 // extension without passing through here, so a malformed payload is caught where the
 // message is useful rather than coming back as an opaque 422.
 import {
+  MAX_ENTITIES,
+  MAX_ENTITY_CHARS,
   MAX_PARAGRAPHS,
   MAX_PARAGRAPH_CHARS,
   MAX_TITLE_CHARS,
   MAX_URL_CHARS,
 } from '../types';
-import type { AnalyzeRequest, Paragraph, SectionHint } from '../types';
+import type { AnalyzeRequest, CoverageRequest, Paragraph, SectionHint } from '../types';
 
 const SECTION_HINTS: readonly SectionHint[] = ['opinion', 'news', null];
 
@@ -63,5 +65,32 @@ export function buildAnalyzeRequest(input: AnalyzeRequest): AnalyzeRequest {
     title: (input.title ?? '').slice(0, MAX_TITLE_CHARS),
     section_hint: input.section_hint,
     paragraphs,
+  };
+}
+
+/**
+ * Client-side mirror of backend/app/types.py::CoverageRequest. Entities are deduped
+ * and clamped like paragraphs are: a long entity list should lose its tail, not fail.
+ */
+export function buildCoverageRequest(input: CoverageRequest): CoverageRequest {
+  if (typeof input.doc_hash !== 'string' || input.doc_hash.length === 0) {
+    throw new ContractError('Analyze the article before searching for coverage.');
+  }
+
+  const seen = new Set<string>();
+  const entities: string[] = [];
+  for (const raw of Array.isArray(input.entities) ? input.entities : []) {
+    const entity = String(raw).trim().slice(0, MAX_ENTITY_CHARS);
+    const key = entity.toLowerCase();
+    if (entity.length === 0 || seen.has(key)) continue;
+    seen.add(key);
+    entities.push(entity);
+    if (entities.length === MAX_ENTITIES) break;
+  }
+
+  return {
+    doc_hash: input.doc_hash,
+    entities,
+    title: (input.title ?? '').slice(0, MAX_TITLE_CHARS),
   };
 }

@@ -1,4 +1,4 @@
-.PHONY: help install dev build clean typecheck preview lint
+.PHONY: help install dev build clean typecheck lint
 
 help:
 	@echo "Bad Faith Extension - Available Commands"
@@ -9,7 +9,7 @@ help:
 	@echo "  make typecheck     Run TypeScript type checking"
 	@echo "  make clean         Remove dist/ and node_modules/"
 	@echo "  make clean-dist    Remove only dist/ directory"
-	@echo "  make preview       Build the dev design harness in dev/"
+	@echo "  make       Build the dev design harness in dev/"
 	@echo ""
 
 install:
@@ -29,9 +29,6 @@ clean: clean-dist
 
 clean-dist:
 	rm -rf dist
-
-preview: build
-	npm run preview
 
 # Helper target for CI/CD
 ci: clean install build
