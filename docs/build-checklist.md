@@ -114,8 +114,8 @@ else from working if it isn't done.
 - [ ] `eval/runners/semeval_spans.py` — full spec in `docs/project-structure.md`:
   - [ ] fixed-seed subset of ~50 articles; record `n`
   - [ ] split articles into paragraphs, keeping each paragraph's start offset
-  - [ ] convert each flag's quote to article offsets (first occurrence, matched the way the
-        grounding gate matches)
+  - [ ] convert each flag's quote to article offsets with a plain `find` (first occurrence;
+        the gate returns the paragraph's exact text)
   - [ ] collapse our 16 techniques onto their 14 classes
   - [ ] report precision/recall/F1 per technique, exact and overlap; **decide what counts
         as overlap** and record it in `notes`
@@ -130,48 +130,49 @@ else from working if it isn't done.
 
 ### Client layer
 
-- [ ] **[BLOCKING]** `app/clients/nemotron.py` — `NemotronClient.complete_json(prompt,
+- [x] **[BLOCKING]** `app/ext/nemotron.py` — `NemotronClient.complete_json(prompt,
       model, schema)`. Retries with jittered backoff, per-call timeout, JSON extraction,
       Pydantic parse, one reprompt on parse failure. Jason needs this for `/coverage`
-- [ ] Structured logging of model, token counts, latency per call — this feeds the routing eval
-- [ ] `app/schemas/models.py` — `RawClassification`, `RawLabelBatch`, `RawVerification`.
+- [x] Structured logging of model, token counts, latency per call — this feeds the routing eval
+- [x] `app/schemas/models.py` — `RawClassification`, `RawLabelBatch`, `RawVerification`.
       Model-facing shapes, kept separate from the public response schema
 
 ### Doc type
 
-- [ ] `app/pipeline/classify.py` — `resolve_doc_type(section_hint, title, sample, ctx)`
-- [ ] Short-circuit: if `section_hint` is non-null, return immediately with
+- [x] `app/pipeline/classify.py` — `resolve_doc_type(section_hint, title, sample, ctx)`
+- [x] Short-circuit: if `section_hint` is non-null, return immediately with
       `doc_type_source="metadata"` and make no model call
-- [ ] `app/utils/text.py` — `sample_for_classification()`, headline plus the first few
+- [x] `app/utils/text.py` — `sample_for_classification()`, headline plus the first few
       paragraphs, not the full article
-- [ ] `prompts/classify.txt` — one word out: `news`, `opinion`, or `other`
-- [ ] Map doc type to a severity policy. Same technique scores high in news, low in
+- [x] `prompts/classify.txt` — a one-field JSON object: `news`, `opinion`, or `other`
+- [x] Map doc type to a severity policy. Same technique scores high in news, low in
       opinion. Write this as an explicit table, not scattered conditionals. The policy
       changes `severity` only; it never removes a flag
 
 ### Span labeling + claims
 
-- [ ] `app/utils/text.py` — `batch_paragraphs()`, ~5 paragraphs per batch, tune on latency
-- [ ] `prompts/label.txt` — returns **both** flags and claims in one JSON response
-- [ ] Pin the technique enum in the prompt. List the sixteen allowed values explicitly and
+- [x] `app/utils/text.py` — `batch_paragraphs()`, ~5 paragraphs per batch, tune on latency
+- [x] `prompts/label.txt` — returns **both** flags and claims in one JSON response
+- [x] Pin the technique enum in the prompt. List the sixteen allowed values explicitly and
       instruct the model to use no others
-- [ ] Require verbatim quotes in the prompt and say why — paraphrase breaks the grounding gate
-- [ ] Require **minimal-span** quotes in the prompt: only the words that carry the
+- [x] Require verbatim quotes in the prompt and say why — paraphrase breaks the grounding gate
+- [x] Require **minimal-span** quotes in the prompt: only the words that carry the
       technique, not the whole sentence. SemEval's gold spans are short, and tight quotes
       make better highlights
-- [ ] No flag filtering in `label.py` or `orchestrate.py` — no severity or confidence
+- [x] No flag filtering in `label.py` or `orchestrate.py` — no severity or confidence
       cutoff. Only the grounding gate removes flags; display thresholds live in the
       extension and the eval
-- [ ] `app/pipeline/label.py` — `label_batch(paragraphs, doc_type, ctx)`
-- [ ] Emit `confidence` per flag (feeds the calibration story, costs nothing)
-- [ ] Claim extraction inside the same call: `statistic`, `attributed_quote`,
+- [x] `app/pipeline/label.py` — `label_batch(paragraphs, doc_type, model, ctx)`
+- [x] Emit `confidence` per flag (feeds the calibration story, costs nothing)
+- [x] Claim extraction inside the same call: `statistic`, `attributed_quote`,
       `date_or_count`, each with `paragraph_id`, verbatim quote, and entity list for GDELT
-- [ ] `app/pipeline/orchestrate.py` — `run_analysis()`. Doc type → batch → `asyncio.gather`
+- [x] `app/pipeline/orchestrate.py` — `run_analysis()`. Doc type → batch → `asyncio.gather`
       fan-out → grounding → assemble
 - [ ] Partial failure policy: a failed batch degrades that paragraph, it does not fail the
-      request. Count it in `meta`
-- [ ] Overall timeout budget enforced at the orchestrator, not per call
-- [ ] `app/routes/analyze.py` wired to the orchestrator
+      request. Count it in `meta` (done except the count: it is logged, and `meta` has no
+      field for it yet; all batches failing raises `AnalysisError`, a 502)
+- [x] Overall timeout budget enforced at the orchestrator, not per call
+- [x] `app/api/analyze.py` wired to the orchestrator
 - [ ] Test a 200-paragraph article and check total latency before assuming batch size is fine
 
 ---
@@ -180,17 +181,17 @@ else from working if it isn't done.
 
 ### Grounding gate
 
-- [ ] **Build this first.** `app/pipeline/ground.py` —
+- [x] **Build this first.** `app/pipeline/ground.py` —
       `verify_quotes(flags, claims, paragraphs)`, pure function, no I/O
-- [ ] Normalize before matching: curly to straight quotes, non-breaking to regular spaces,
+- [x] Normalize before matching: curly to straight quotes, non-breaking to regular spaces,
       em/en dashes, collapsed whitespace, Unicode NFKC
-- [ ] Require the quote to be a literal substring **of the paragraph it names**, not of the
+- [x] Require the quote to be a literal substring **of the paragraph it names**, not of the
       whole article
-- [ ] Return kept items plus drop count and drop reasons; orchestrator puts the count in
+- [x] Return kept items plus drop count and drop reasons; orchestrator puts the count in
       `meta.flags_dropped`
-- [ ] `tests/test_ground.py` — curly apostrophes, non-breaking spaces, em dashes, wrong
-      `paragraph_id`, wholly fabricated quote, empty quote, quote spanning two paragraphs, quote that appears twice in its paragraph
-      (first occurrence wins)
+- [x] `tests/test_ground.py` — curly apostrophes, non-breaking spaces, em dashes, wrong
+      `paragraph_id`, wholly fabricated quote, empty quote, quote spanning two paragraphs,
+      quote that appears twice in its paragraph (first occurrence wins)
 
 ### Coverage
 

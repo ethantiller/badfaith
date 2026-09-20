@@ -1,8 +1,9 @@
 """Public API contracts. Hand-mirror in extension/lib/types.ts."""
 
 from enum import StrEnum
+from typing import Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # --- Enums ---
@@ -104,6 +105,33 @@ class CoverageResponse(BaseModel):
 
 
 # --- Analysis ---
+
+# Size caps live here, not in Settings: Field(max_length=...) is evaluated at import.
+MAX_PARAGRAPHS = 300
+MAX_CHARS_PER_PARAGRAPH = 4000
+MAX_TOTAL_CHARS = 200_000
+
+
+class Paragraph(BaseModel):
+    id: int = Field(ge=0)
+    text: str = Field(min_length=1, max_length=MAX_CHARS_PER_PARAGRAPH)
+
+
+class AnalyzeRequest(BaseModel):
+    url: str = Field(max_length=2048)
+    title: str = Field(max_length=500)
+    section_hint: Literal["opinion", "news"] | None = None  # None: the page gave no hint
+    paragraphs: list[Paragraph] = Field(min_length=1, max_length=MAX_PARAGRAPHS)
+
+    @model_validator(mode="after")
+    def _check_paragraphs(self) -> Self:
+        ids = [p.id for p in self.paragraphs]
+        if len(set(ids)) != len(ids):
+            raise ValueError("paragraph ids must be unique")
+        if sum(len(p.text) for p in self.paragraphs) > MAX_TOTAL_CHARS:
+            raise ValueError(f"article text exceeds {MAX_TOTAL_CHARS} characters")
+        return self
+
 
 class Flag(BaseModel):
     paragraph_id: int

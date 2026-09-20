@@ -149,7 +149,7 @@ Response:
     "related": [ { "outlet": "...", "url": "...", "headline": "..." } ],
     "omissions": [ { "summary": "...", "corroborating_urls": ["..."] } ]
   },
-  "meta": { "cached": false, "model_route": "nano|super", "latency_ms": 0 }
+  "meta": { "cached": false, "model_route": "small|large", "latency_ms": 0 }
 }
 ```
 
@@ -190,7 +190,8 @@ article left out.
 
 **Grounding gate, between the model and the user.** Before anything reaches the client,
 plain Python string matching confirms each returned `quote` actually occurs in the
-paragraph it claims to come from. Failures are dropped and counted. This is deterministic
+paragraph it claims to come from, ignoring quote and dash styles. Failures are dropped and
+counted, and each kept quote is rewritten to the paragraph's exact text. This is deterministic
 code, not a model call, and it is both a correctness guarantee and an eval metric.
 
 Concurrency, retries with backoff, and a per-request timeout budget all live in a thin
