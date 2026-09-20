@@ -466,8 +466,7 @@ scaffold that got built is plain Vite, and the three-pass build below is what th
 ```
 extension/
 ├── vite.config.ts        (one config, branching on BUILD_TARGET)
-├── public/               (manifest.json, popup.html, reset.html)
-├── dev/                  (design harness: a fake article driving the real UI; not shipped)
+├── public/               (manifest.json, sidepanel.html, reset.html)
 └── src/
     ├── background.ts     (entry: service worker, the only token holder and fetch caller)
     ├── types.ts          (hand-mirror of app/types.py, plus the message envelopes)
@@ -482,20 +481,20 @@ extension/
     │   ├── detect_opinion_piece.ts
     │   ├── doc_hash.ts           (paragraph hash, for staleness)
     │   └── highlight.ts          (Range/TreeWalker wrap, unwrap, scroll-and-pulse)
-    ├── messaging/        (sendToBackground, sendToActiveTab, isOwnMessage)
+    ├── messaging/        (sendToBackground, sendToTab, sendToActiveTab, broadcast, isOwnMessage)
     ├── content/          (the content script)
     │   ├── index.ts      (entry: state machine and the analysis flow)
-    │   ├── surface.ts    (shadow host, badge, card and tooltip, created on demand)
+    │   ├── surface.ts    (shadow host and tooltip, created on demand)
     │   ├── hover.ts      (delegated hover and keyboard focus on a highlight)
     │   └── watcher.ts    (debounced MutationObserver for staleness)
-    ├── ui/               (injected UI: plain DOM in a closed shadow root)
+    ├── ui/               (injected UI: plain DOM, mostly in a closed shadow root)
     │   ├── dom.ts        (el/button helpers)
-    │   ├── host.ts  badge.ts  card.ts  tooltip.ts  labels.ts
-    │   └── tokens.css  injected.css  highlight.css  page.css
+    │   ├── host.ts  tooltip.ts  labels.ts
+    │   └── tokens.css  injected.css  highlight.css  page.css  sidepanel.css  report.css
     └── pages/            (the extension's own React screens)
         ├── mount.tsx     (shared bootstrap: inject styles, render into #root)
         ├── Brand.tsx     (shared heading and spinner)
-        ├── popup/        (sign in/up/out, reset, and the Analyze button)
+        ├── sidepanel/    (sign in/up/out, reset, the Analyze button, and the report)
         └── reset/        (full tab for the password-recovery link)
 ```
 
@@ -505,25 +504,26 @@ are the two places those get assembled; `messaging/` is the seam between them.
 
 ### `vite.config.ts`
 Three build passes, because the entry points have different rules. The pages pass builds
-`popup` and `reset` as ES modules sharing a React chunk. `BUILD_TARGET=content` and
+`sidepanel` and `reset` as ES modules sharing a React chunk. `BUILD_TARGET=content` and
 `BUILD_TARGET=background` each produce one self-contained IIFE, because **a content script
 is a classic script**: a shared chunk or a surviving `import` statement breaks it at load.
-A fourth target, `preview`, builds the dev harness.
 
 There must be no `vite.config.js` in the directory — Vite resolves it *before* the
 TypeScript config, so edits to the `.ts` file would be silently ignored.
 
 ### `public/manifest.json`
-`permissions: ["storage"]`, host permissions for the sites the content script runs on, no
-`externally_connectable`. Two additions beyond the scaffold: `background.service_worker`,
-and a `web_accessible_resources` entry exposing `reset.html` to `https://*.supabase.co/*`
-only, which is the origin that navigates to the password-recovery page. `chrome.tabs`
-needs no permission here because the popup only uses tab ids.
+`permissions: ["storage", "sidePanel"]`, host permissions for the sites the content script
+runs on, no `externally_connectable`. `side_panel.default_path` points at `sidepanel.html`,
+and `background.ts` calls `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true
+})` so the toolbar icon opens the panel instead of a popup. A `web_accessible_resources`
+entry exposes `reset.html` to `https://*.supabase.co/*` only, which is the origin that
+navigates to the password-recovery page. `chrome.tabs` needs no permission here because the
+side panel only reads tab ids and load state, never a tab's URL or title.
 
 ### `src/types.ts`
 Hand-mirror of the Python schemas, plus two message envelopes.
 
-Popup and content script to the **background worker**:
+Side panel and content script to the **background worker**:
 ```ts
 type BgRequest =
   | { kind: "ANALYZE_REQUEST"; payload: AnalyzeRequest }
@@ -536,16 +536,33 @@ type BgResult<T> =
                       | "invalid_request"; message: string };
 ```
 
-Popup to the **active tab**, which needs no token and so does not go through the
+Side panel to a **specific tab**, which needs no token and so does not go through the
 background:
 ```ts
-type TabRequest = { kind: "PAGE_STATUS" } | { kind: "RUN_ANALYZE" };
-interface PageStatus { isArticle; paragraphs; state; flags; docType; message }
+type TabRequest =
+  | { kind: "PAGE_STATUS" }
+  | { kind: "RUN_ANALYZE" }
+  | { kind: "FOCUS_FLAG"; id: string }
+  | { kind: "SET_HOT_FLAG"; id: string | null }
+  | { kind: "TOGGLE_HIGHLIGHTS"; visible: boolean }
+  | { kind: "CLEAR" };
+interface PageStatus { isArticle; paragraphs; state; flags; docType; message; result; highlightsVisible }
 ```
 
+Content script to the **side panel**, with no particular tab in mind — the panel filters by
+`sender.tab.id` itself:
+```ts
+type HoverBroadcast = { kind: "HOVER_FLAG"; id: string | null };
+```
+
+The side panel is long-lived, unlike the popup it replaced: it does not cache a report per
+tab, it just re-asks the newly active tab's content script for `PAGE_STATUS` — including
+the stored `result` — every time `chrome.tabs.onActivated` fires. The content script's own
+module state is the source of truth for its tab for as long as that page is not reloaded.
+
 There is no `AUTH_STATE` broadcast. It existed so an already-open page could update its
-Analyze button after a sign-in; the button now lives in the popup, which reads auth state
-fresh every time it opens.
+Analyze button after a sign-in; the button now lives in the side panel, which reads auth
+state fresh every time it opens.
 
 ### `src/background.ts`
 The trusted core. Registers `chrome.runtime.onMessage`, rejects any message where
@@ -560,15 +577,18 @@ body is logged to the worker console, because FastAPI's 422 detail names the fie
 
 ### `src/content/`
 `index.ts` runs in the page and renders nothing until asked. On load it registers one
-message listener. `PAGE_STATUS` parses locally and reports whether this looks like an article;
-`RUN_ANALYZE` parses, detects the section hint, sends one `ANALYZE_REQUEST`, then mounts
-the shadow host, applies highlights and opens the card. No token ever reaches this file.
+message listener. `PAGE_STATUS` parses locally and reports whether this looks like an article,
+plus the stored result if one exists; `RUN_ANALYZE` parses, detects the section hint, sends
+one `ANALYZE_REQUEST`, then mounts the shadow host and applies highlights. `FOCUS_FLAG`,
+`SET_HOT_FLAG`, `TOGGLE_HIGHLIGHTS` and `CLEAR` come from the side panel and drive the same
+functions the old in-page card used to call directly. No token ever reaches this file.
 It keeps the `Map<number, HTMLElement>` of paragraph ID to live DOM node in memory — that
 map never crosses a message boundary. A debounced `MutationObserver`, started only once an
 analysis has run, marks a changed article stale and re-applies wrappers the site dropped;
 it is disconnected while we wrap, so our own edits are never mistaken for the site's.
-The pieces are split by job: `surface.ts` creates and destroys everything on screen,
-`hover.ts` delegates the highlight interactions from the document, and `watcher.ts` owns
+The pieces are split by job: `surface.ts` creates and destroys the shadow host and tooltip,
+`hover.ts` delegates the highlight interactions from the document and broadcasts a
+`HOVER_FLAG` message so the side panel can light the matching row, and `watcher.ts` owns
 the observer and its `silently()` guard.
 
 ### `src/article/paragraph_parser.ts`
@@ -583,7 +603,7 @@ export function parseParagraphs(document: Document): {
 **The riskiest file in the project.** Every site nests article text differently. It tries
 `<article>`, then a list of body-content selectors, and validates each candidate on
 paragraph count and total length. `foundArticleContainer` is false when it falls back to
-`document.body`, and that flag is what stops the popup offering Analyze on a non-article
+`document.body`, and that flag is what stops the side panel offering Analyze on a non-article
 page. Text is `textContent` with whitespace runs collapsed to one space, then trimmed —
 `highlight.ts` reproduces that collapse exactly, so the two cannot drift.
 
@@ -620,10 +640,15 @@ controls. `tokens.css` holds colour, radius, shadow and motion for both the inje
 the extension's own pages. `highlight.css` is the only stylesheet that lives in the page's
 light DOM, because the wrappers must sit inside the article's own text.
 
-### `src/pages/popup/`
-Sign in, sign up (13+ confirmation, required), forgot password, sign out — and the Analyze
-button, with a one-line report of what the active tab holds. It constructs no Supabase
-client; every auth action is a message to the background worker.
+### `src/pages/sidepanel/`
+Sign in, sign up (13+ confirmation, required), forgot password, sign out, the Analyze
+button, and a three-tab report: Summary (technique tally, flagged phrases in reading
+order), Claims (click scrolls the article to the claim mark) and Coverage (a user-triggered
+`POST /coverage`, cached per `doc_hash` so tab switches do not refire it). It
+constructs no Supabase client; every auth action is a message to the background worker. It
+tracks whichever tab it is currently reporting on, since unlike a popup it stays open
+across tab switches, and re-fetches that tab's `PAGE_STATUS` on every switch instead of
+caching a report per tab itself.
 
 ### `src/pages/reset/`
 A full tab, reached by the password-recovery email link. A popup closes as soon as it

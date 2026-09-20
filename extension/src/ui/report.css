@@ -1,0 +1,277 @@
+/* Report styles, side panel only. Kept out of injected.css, which is bundled into
+   the shadow host that every article page gets. */
+
+.bf-glow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(
+    120px circle at var(--bf-mx, 50%) var(--bf-my, 50%),
+    var(--bf-glow-near),
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity var(--bf-base) var(--bf-ease);
+  pointer-events: none;
+}
+
+.bf-section {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--bf-line);
+}
+
+.bf-section:last-child {
+  border-bottom: 0;
+}
+
+.bf-section-title {
+  margin: 0 0 9px;
+  font: 500 12px/1.3 var(--bf-font);
+  color: var(--bf-text-dim);
+}
+
+.bf-tally {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.bf-tally dt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bf-tally dd {
+  margin: 0;
+  color: var(--bf-text-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.bf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bf-row {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 9px;
+  margin: 0 -9px;
+  font: 400 13px/1.45 var(--bf-font);
+  color: var(--bf-text);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--bf-radius-sm);
+  cursor: pointer;
+  isolation: isolate;
+  transition: background-color var(--bf-base) var(--bf-ease);
+}
+
+/* `data-hot` is the same row lit from the other side: the pointer is on that
+   phrase in the article, not in this list. */
+.bf-row:hover,
+.bf-row[data-hot] {
+  background: var(--bf-accent-soft);
+}
+
+/* A mark in the margin, drawn the moment the row is live — the same gesture the
+   highlight in the article makes. */
+.bf-row::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: -1px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--bf-accent);
+  transform: scaleY(0);
+  transform-origin: 50% 0;
+  transition: transform var(--bf-base) var(--bf-spring);
+}
+
+.bf-row:hover::after,
+.bf-row[data-hot]::after {
+  transform: scaleY(1);
+}
+
+/* The flag list is in reading order, so the paragraph number is information. */
+.bf-row-index {
+  flex: none;
+  min-width: 18px;
+  color: var(--bf-text-dim);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--bf-base) var(--bf-ease);
+}
+
+.bf-row:hover .bf-row-index,
+.bf-row[data-hot] .bf-row-index {
+  color: var(--bf-accent-strong);
+}
+
+.bf-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.bf-row-technique {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.bf-row-name {
+  font-weight: 500;
+}
+
+.bf-row-quote {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--bf-text-dim);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Severity modulates weight of the same ink, never hue: this reports a technique,
+   not a verdict. */
+.bf-chip {
+  flex: none;
+  padding: 2px 8px;
+  font: 500 11px/1.35 var(--bf-font);
+  color: var(--bf-accent-strong);
+  background: var(--bf-accent-soft);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition:
+    border-color var(--bf-base) var(--bf-ease),
+    box-shadow var(--bf-base) var(--bf-ease);
+}
+
+.bf-chip[data-severity='medium'] {
+  border-color: var(--bf-accent-line);
+}
+
+.bf-chip[data-severity='high'] {
+  color: var(--bf-on-accent);
+  background: var(--bf-accent-strong);
+}
+
+.bf-row:hover .bf-chip,
+.bf-row[data-hot] .bf-chip {
+  box-shadow: 0 0 0 4px var(--bf-glow-ring);
+}
+
+
+.bf-empty {
+  margin: 0;
+  color: var(--bf-text-dim);
+}
+
+
+/* --- The highlights switch --- */
+
+.bf-toggle {
+  display: inline-flex;
+  gap: 9px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+  cursor: pointer;
+  transition: color var(--bf-fast) var(--bf-ease);
+}
+
+.bf-toggle:hover {
+  color: var(--bf-text);
+}
+
+/* A real switch, because the thing it controls is a visible change to the page and
+   the control should move the way the page does. */
+.bf-toggle input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 16px;
+  margin: 0;
+  background: var(--bf-surface-sunken);
+  border: 1px solid var(--bf-line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background-color var(--bf-base) var(--bf-ease),
+    border-color var(--bf-base) var(--bf-ease),
+    box-shadow var(--bf-base) var(--bf-ease);
+}
+
+.bf-toggle input::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  background: var(--bf-text-dim);
+  border-radius: 50%;
+  transition:
+    transform var(--bf-base) var(--bf-spring),
+    background-color var(--bf-base) var(--bf-ease);
+}
+
+.bf-toggle input:checked {
+  background: var(--bf-accent);
+  border-color: var(--bf-accent);
+}
+
+.bf-toggle input:checked::after {
+  background: var(--bf-on-accent);
+  transform: translateX(12px);
+}
+
+.bf-toggle:hover input {
+  box-shadow: 0 0 0 4px var(--bf-glow-ring);
+}
+
+/* --- Quiet text actions --- */
+
+.bf-text-button {
+  position: relative;
+  padding: 0;
+  font: 500 12px/1.3 var(--bf-font);
+  color: var(--bf-accent-strong);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* The underline is drawn, not switched on. */
+.bf-text-button::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -2px;
+  left: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform var(--bf-base) var(--bf-ease);
+}
+
+.bf-text-button:hover::after {
+  transform: scaleX(1);
+}
+

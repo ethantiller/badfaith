@@ -8,6 +8,9 @@ export const MAX_PARAGRAPHS = 400;
 export const MAX_PARAGRAPH_CHARS = 5_000;
 export const MAX_URL_CHARS = 2_048;
 export const MAX_TITLE_CHARS = 512;
+/** Client-side cap until the backend defines one for /coverage. */
+export const MAX_ENTITIES = 20;
+export const MAX_ENTITY_CHARS = 200;
 
 // --- Enums ---
 
@@ -52,7 +55,6 @@ export const TECHNIQUES: readonly Technique[] = [
 ];
 
 export type Severity = 'low' | 'medium' | 'high';
-export type VerificationStatus = 'supported' | 'contradicted' | 'unverified';
 export type DocType = 'news' | 'news_with_heavy_bias' | 'news_with_slight_bias' | 'opinion' | 'other';
 export type DocTypeSource = 'metadata' | 'model';
 export type ClaimType = 'statistic' | 'attributed_quote' | 'date_or_count';
@@ -111,8 +113,6 @@ export interface AnalyzeResponse {
 
 export interface CoverageRequest {
   doc_hash: string;
-  claim_id: string;
-  quote: string;
   entities: string[];
   title: string;
 }
@@ -125,10 +125,6 @@ export interface RelatedSource {
   seendate: string;
 }
 
-export interface Omission {
-  summary: string;
-  corroborating_urls: string[];
-}
 
 export interface CoverageMeta {
   sources_queried: number;
@@ -136,10 +132,9 @@ export interface CoverageMeta {
 }
 
 export interface CoverageResponse {
-  claim_id: string;
-  status: VerificationStatus;
+  doc_hash: string;
+  summary: string;
   related: RelatedSource[];
-  omissions: Omission[];
   meta: CoverageMeta;
 }
 
@@ -171,7 +166,7 @@ export interface UserSignUpResponse {
 }
 
 // --- Message envelope ---
-// Content script and popup both talk to the background worker, which is the only
+// Content script and side panel both talk to the background worker, which is the only
 // context holding a token or calling the backend.
 
 export type BgErrorCode =
@@ -193,6 +188,7 @@ export interface AuthState {
 
 export type BgRequest =
   | { kind: 'ANALYZE_REQUEST'; payload: AnalyzeRequest }
+  | { kind: 'COVERAGE_REQUEST'; payload: CoverageRequest }
   | { kind: 'AUTH_STATUS' }
   | { kind: 'AUTH_SIGN_IN'; email: string; password: string }
   | { kind: 'AUTH_SIGN_UP'; email: string; password: string; isAgeVerified: boolean }
@@ -205,9 +201,9 @@ export type BgRequest =
       newPassword: string;
     };
 
-// --- Popup to content script ---
-// The Analyze trigger lives in the popup, so the extension puts nothing on a page
-// until the user asks for it. The popup addresses the active tab directly; no token
+// --- Side panel to content script ---
+// The Analyze trigger lives in the side panel, so the extension puts nothing on a page
+// until the user asks for it. The panel addresses the active tab directly; no token
 // is involved, so this does not go through the background worker.
 
 export type PageState = 'idle' | 'loading' | 'done' | 'stale' | 'error';
@@ -219,11 +215,26 @@ export interface PageStatus {
   /** False on anything without a real article container, including this whole site. */
   isArticle: boolean;
   paragraphs: number;
+  /** `document.title`, so the panel can ask for coverage without a second round trip. */
+  title: string;
   state: PageState;
   flags: number;
   /** What to print, so `unknown` never has to exist on the wire. Null before a run. */
   docType: DisplayDocType | null;
   message: string | null;
+  /** The full result, so the side panel can render the report without a second request. */
+  result: AnalyzeResponse | null;
+  highlightsVisible: boolean;
 }
 
-export type TabRequest = { kind: 'PAGE_STATUS' } | { kind: 'RUN_ANALYZE' };
+export type TabRequest =
+  | { kind: 'PAGE_STATUS' }
+  | { kind: 'RUN_ANALYZE' }
+  | { kind: 'FOCUS_FLAG'; id: string }
+  | { kind: 'FOCUS_CLAIM'; id: string }
+  | { kind: 'SET_HOT_FLAG'; id: string | null }
+  | { kind: 'TOGGLE_HIGHLIGHTS'; visible: boolean }
+  | { kind: 'CLEAR' };
+
+/** Content script to side panel: no tab address, so this goes over `chrome.runtime.sendMessage`. */
+export type HoverBroadcast = { kind: 'HOVER_FLAG'; id: string | null };

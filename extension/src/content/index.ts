@@ -1,39 +1,37 @@
 // Runs inside the news page. It puts nothing on screen until the user clicks Analyze
-// in the popup: on an ordinary page this script only answers a status question. It
-// holds no token and never calls the backend directly.
+// in the side panel: on an ordinary page this script only answers a status question.
+// It holds no token and never calls the backend directly.
 import { detectOpinionPiece } from '../article/detect_opinion_piece';
 import { paragraphHash } from '../article/doc_hash';
 import {
+  applyClaims,
   applyFlags,
+  claimHighlightCount,
   clearHighlights,
   flagId,
+  focusClaim,
   focusFlag,
   highlightCount,
   setFlagHot,
   setHighlightsVisible,
 } from '../article/highlight';
 import { parseParagraphs } from '../article/paragraph_parser';
-import { isOwnMessage, sendToBackground } from '../messaging';
+import { broadcast, isOwnMessage, sendToBackground } from '../messaging';
+import { describeError, isRetryable } from '../messaging/errors';
 import { displayDocType } from '../ui/labels';
-import type { BadgeDetail } from '../ui/badge';
 import type { AnalyzeResponse, Flag, PageState, PageStatus, TabRequest } from '../types';
 import { wireHighlightHover } from './hover';
 import { createSurface, type Surface } from './surface';
 import { createWatcher } from './watcher';
 
-const ERROR_MESSAGES: Record<string, string> = {
-  unauthenticated: 'Sign in from the extension icon.',
-  rate_limited: 'Too many requests. Try again later.',
-  network: 'Could not reach Bad Faith. Try again.',
-  server: 'Bad Faith had a problem. Try again.',
-};
-
-/** Retrying these changes nothing, so the badge offers no retry. */
-const FINAL_ERRORS = new Set(['rate_limited', 'unauthenticated', 'invalid_request']);
+interface PhaseDetail {
+  message?: string;
+  retryable?: boolean;
+}
 
 const state = {
   phase: 'idle' as PageState,
-  detail: {} as BadgeDetail,
+  detail: {} as PhaseDetail,
   surface: null as Surface | null,
   nodeMap: new Map<number, HTMLElement>(),
   flagsById: new Map<string, Flag>(),
@@ -46,35 +44,20 @@ const watcher = createWatcher(checkForChanges);
 
 // --- Rendering ---
 
-function setPhase(phase: PageState, detail: BadgeDetail = {}): void {
+function setPhase(phase: PageState, detail: PhaseDetail = {}): void {
   state.phase = phase;
   state.detail = detail;
-  state.surface?.render(phase, detail);
 }
 
 function surface(): Surface {
   if (state.surface) return state.surface;
-
-  state.surface = createSurface({
-    onBadgeClick,
-    onClose: () => state.surface?.showCard(false),
-    onFlagClick: (id) => {
-      focusFlag(id);
-      if (!state.highlightsVisible) toggleHighlights(true);
-    },
-    // Pointing at a row in the report is the same act as pointing at the phrase.
-    onFlagHover: (id) => watcher.silently(() => setFlagHot(id)),
-    onToggleHighlights: toggleHighlights,
-    onClear: teardown,
-  });
-
+  state.surface = createSurface();
   return state.surface;
 }
 
 function toggleHighlights(visible: boolean): void {
   state.highlightsVisible = visible;
   setHighlightsVisible(visible);
-  state.surface?.card.setHighlightsVisible(visible);
 }
 
 /** Puts the page back exactly as it was found. */
@@ -91,20 +74,18 @@ function teardown(): void {
   state.phase = 'idle';
 }
 
-function renderResult(result: AnalyzeResponse, openCard: boolean): void {
-  const view = surface();
+function renderResult(result: AnalyzeResponse): void {
+  surface();
   state.flagsById = new Map(result.flags.map((flag, index) => [flagId(flag, index), flag]));
 
   watcher.silently(() => {
     clearHighlights();
     applyFlags(result.flags, state.nodeMap);
+    applyClaims(result.claims, state.nodeMap);
     setHighlightsVisible(state.highlightsVisible);
   });
 
-  view.card.render(result);
-  view.card.setHighlightsVisible(state.highlightsVisible);
-  setPhase('done', { result });
-  if (openCard) view.showCard(true);
+  setPhase('done');
 }
 
 // --- Analysis ---
@@ -118,13 +99,12 @@ async function runAnalysis(): Promise<PageStatus> {
 
   // Same content as last time: re-render what we already have, send nothing.
   if (state.result && state.hash === hash) {
-    renderResult(state.result, true);
+    renderResult(state.result);
     return status();
   }
 
   surface();
   setPhase('loading');
-  state.surface?.showCard(false);
   watcher.start();
 
   const response = await sendToBackground<AnalyzeResponse>({
@@ -139,33 +119,16 @@ async function runAnalysis(): Promise<PageStatus> {
 
   if (!response.ok) {
     setPhase('error', {
-      // A contract failure names the offending field; a generic code does not.
-      message:
-        response.code === 'invalid_request'
-          ? response.message
-          : (ERROR_MESSAGES[response.code] ?? response.message),
-      retryable: !FINAL_ERRORS.has(response.code),
+      message: describeError(response),
+      retryable: isRetryable(response.code),
     });
     return status();
   }
 
   state.result = response.data;
   state.hash = hash;
-  renderResult(response.data, true);
+  renderResult(response.data);
   return status();
-}
-
-function onBadgeClick(event: MouseEvent): void {
-  // A page script must never be able to spend model credits on the user's behalf.
-  if (!event.isTrusted) return;
-
-  if (state.phase === 'done') {
-    state.surface?.showCard(!state.surface.cardOpen);
-    return;
-  }
-
-  const retryable = state.phase === 'error' && state.detail.retryable !== false;
-  if (state.phase === 'stale' || retryable) void runAnalysis();
 }
 
 function status(): PageStatus {
@@ -174,10 +137,13 @@ function status(): PageStatus {
   return {
     isArticle: parsed.foundArticleContainer && parsed.paragraphs.length > 0,
     paragraphs: parsed.paragraphs.length,
+    title: document.title,
     state: state.phase,
     flags: state.result?.flags.length ?? 0,
     docType: state.result ? displayDocType(state.result) : null,
     message: state.phase === 'error' ? (state.detail.message ?? null) : null,
+    result: state.result,
+    highlightsVisible: state.highlightsVisible,
   };
 }
 
@@ -195,7 +161,6 @@ function checkForChanges(): void {
 
   if (state.hash !== null && paragraphHash(parsed.paragraphs) !== state.hash) {
     setPhase('stale');
-    state.surface.showCard(false);
     return;
   }
 
@@ -207,6 +172,15 @@ function checkForChanges(): void {
       setHighlightsVisible(state.highlightsVisible);
     });
   }
+
+  // Independent from flags: the site may re-render one region and not the other.
+  if (claimHighlightCount() === 0) {
+    const claims = state.result.claims;
+    watcher.silently(() => {
+      applyClaims(claims, state.nodeMap, false);
+      setHighlightsVisible(state.highlightsVisible);
+    });
+  }
 }
 
 // --- Entry point ---
@@ -215,15 +189,15 @@ wireHighlightHover({
   lookup: (id) => state.flagsById.get(id),
   show: (anchor, flag) => {
     state.surface?.tooltip.open(anchor, flag);
-    state.surface?.card.setHotFlag(anchor.getAttribute('data-flag-id'));
+    broadcast({ kind: 'HOVER_FLAG', id: anchor.getAttribute('data-flag-id') });
   },
   hide: () => {
     state.surface?.tooltip.close();
-    state.surface?.card.setHotFlag(null);
+    broadcast({ kind: 'HOVER_FLAG', id: null });
   },
   dismiss: () => {
     state.surface?.tooltip.closeNow();
-    state.surface?.card.setHotFlag(null);
+    broadcast({ kind: 'HOVER_FLAG', id: null });
   },
 });
 
@@ -240,5 +214,33 @@ chrome.runtime.onMessage.addListener((message: TabRequest, sender, sendResponse)
     return true; // keep the port open for the async reply
   }
 
+  if (message?.kind === 'FOCUS_FLAG') {
+    focusFlag(message.id);
+    if (!state.highlightsVisible) toggleHighlights(true);
+    return false;
+  }
+
+  if (message?.kind === 'FOCUS_CLAIM') {
+    focusClaim(message.id);
+    if (!state.highlightsVisible) toggleHighlights(true);
+    return false;
+  }
+
+  if (message?.kind === 'SET_HOT_FLAG') {
+    watcher.silently(() => setFlagHot(message.id));
+    return false;
+  }
+
+  if (message?.kind === 'TOGGLE_HIGHLIGHTS') {
+    toggleHighlights(message.visible);
+    return false;
+  }
+
+  if (message?.kind === 'CLEAR') {
+    teardown();
+    return false;
+  }
+
   return false;
 });
+

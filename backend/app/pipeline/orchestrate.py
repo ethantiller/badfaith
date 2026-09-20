@@ -9,6 +9,7 @@ from backend.app.pipeline.classify import resolve_doc_type
 from backend.app.pipeline.ground import verify_quotes
 from backend.app.pipeline.label import label_batch
 from backend.app.types import AnalyzeMeta, AnalyzeRequest, AnalyzeResponse, DocType
+from backend.app.utils.hashing import doc_hash
 from backend.app.utils.text import batch_paragraphs, sample_for_classification
 
 logger = logging.getLogger(__name__)
@@ -118,6 +119,7 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
         flags=kept_flags,
         claims=kept_claims,
         meta=AnalyzeMeta(
+            doc_hash=doc_hash(req.url, req.paragraphs),
             model_route=ctx.label_route,
             latency_ms=round((perf_counter() - started) * 1000),
         ),

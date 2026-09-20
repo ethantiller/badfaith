@@ -446,13 +446,15 @@ Vite + React + TypeScript, Manifest V3, loaded unpacked. The full tree, the thre
 build and the per-file notes live in **`docs/project-structure.md` §3**; that is the one
 copy, so this section stays short rather than drifting away from it.
 
-The shape in one paragraph: the **popup** holds sign-in and the Analyze button; the
-**background service worker** is the only context with a token or a `fetch` call; the
-**content script** renders nothing until the popup asks, then injects highlights, hover
-summaries and a report card into the article inside a closed shadow root. The paragraph
-ID to live-element map stays in the content script and never crosses a message boundary.
-Requests are checked against the `AnalyzeRequest` schema before they are sent, so a bad
-payload fails with a message that names the problem instead of an opaque 422.
+The shape in one paragraph: the **side panel** (Chrome's native `chrome.sidePanel`, opened
+from the toolbar icon) holds sign-in, the Analyze button and the report; the **background
+service worker** is the only context with a token or a `fetch` call; the **content script**
+renders nothing until the side panel asks, then injects highlights and a hover summary into
+the article inside a closed shadow root, while the report itself renders in the panel
+beside the page rather than on top of it. The paragraph ID to live-element map stays in the
+content script and never crosses a message boundary. Requests are checked against the
+`AnalyzeRequest` schema before they are sent, so a bad payload fails with a message that
+names the problem instead of an opaque 422.
 
 Build and load it with `cd extension && make build`, then load `extension/dist/` unpacked.
 See `extension/README.md` for the environment variables and the Supabase redirect URL that

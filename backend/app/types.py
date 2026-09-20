@@ -84,8 +84,6 @@ class Article(BaseModel):
 
 class CoverageRequest(BaseModel):
     doc_hash: str
-    claim_id: str
-    quote: str
     entities: list[str]
     title: str
 
@@ -109,10 +107,9 @@ class CoverageMeta(BaseModel):
 
 
 class CoverageResponse(BaseModel):
-    claim_id: str
-    status: VerificationStatus
+    doc_hash: str
+    summary: str
     related: list[RelatedSource]
-    omissions: list[Omission]
     meta: CoverageMeta
 
 
