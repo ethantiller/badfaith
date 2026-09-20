@@ -4,7 +4,6 @@ import type {
   AnalyzeResponse,
   ClaimType,
   DisplayDocType,
-  DocType,
   DocTypeSource,
   Severity,
   Technique,
@@ -16,8 +15,6 @@ import type {
 // Unknown is what the UI prints if one ever does not — better than asserting "News
 // report" over a document nothing classified.
 export type { DisplayDocType };
-
-const DOC_TYPES: readonly string[] = ['news', 'opinion', 'other'] satisfies DocType[];
 
 export const TECHNIQUE_LABELS: Record<Technique, string> = {
   loaded_language: 'Loaded language',
@@ -46,6 +43,8 @@ export const SEVERITY_LABELS: Record<Severity, string> = {
 
 export const DOC_TYPE_LABELS: Record<DisplayDocType, string> = {
   news: 'News report',
+  news_with_heavy_bias: 'News with heavy bias',
+  news_with_slight_bias: 'News with slight bias',
   opinion: 'Opinion',
   other: 'Other',
   unknown: 'Unknown',
@@ -56,9 +55,20 @@ export const DOC_TYPE_SOURCE_LABELS: Record<DocTypeSource, string> = {
   model: 'classified by the model',
 };
 
-/** What the badge, the card and the popup print for this result. */
+/**
+ * What the badge, the card and the popup print for this result.
+ *
+ * The allowlist is `DOC_TYPE_LABELS` itself rather than a second list of strings:
+ * `Record<DisplayDocType, string>` is exhaustiveness-checked, so adding a member to
+ * `DocType` fails the build until it has a label. A standalone `satisfies DocType[]`
+ * array does not — a subset of the union satisfies it, which is how
+ * `news_with_heavy_bias` once reached the UI as "Unknown".
+ *
+ * `Object.hasOwn`, not `in`: a wire value of `"constructor"` is on the prototype and
+ * would otherwise index to a function.
+ */
 export function displayDocType(result: AnalyzeResponse): DisplayDocType {
-  return DOC_TYPES.includes(result.doc_type) ? result.doc_type : 'unknown';
+  return Object.hasOwn(DOC_TYPE_LABELS, result.doc_type) ? result.doc_type : 'unknown';
 }
 
 export function docTypeSourceLabel(docType: DisplayDocType, source: DocTypeSource): string {
