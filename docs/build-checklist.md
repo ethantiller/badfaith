@@ -130,18 +130,18 @@ else from working if it isn't done.
 - [ ] `eval/runners/symmetry.py` + `datasets/symmetry/build_pairs.py` — ~50 articles with
       party identities swapped, report mean delta and flip rate
 - [ ] `eval/runners/routing.py` — small vs large model agreement, latency, cost per article
-- [ ] Download `datasets-v2.tgz` from Zenodo (zenodo.org/records/3952415, CC BY 4.0) into
+- [x] Download `datasets-v2.tgz` from Zenodo (zenodo.org/records/3952415, CC BY 4.0) into
       `eval/datasets/semeval/` and confirm the train and dev gold files are in it. Test-set
       labels are hidden, so score on train/dev only
-- [ ] `eval/runners/semeval_spans.py` — full spec in `docs/project-structure.md`:
-  - [ ] fixed-seed subset of ~50 articles; record `n`
-  - [ ] split articles into paragraphs, keeping each paragraph's start offset
-  - [ ] convert each flag's quote to article offsets with a plain `find` (first occurrence;
+- [x] `eval/runners/semeval_spans.py` — full spec in `docs/project-structure.md`:
+  - [x] fixed-seed subset of ~50 articles; record `n`
+  - [x] split articles into paragraphs, keeping each paragraph's start offset
+  - [x] convert each flag's quote to article offsets with a plain `find` (first occurrence;
         the gate returns the paragraph's exact text)
-  - [ ] collapse our 16 techniques onto their 14 classes
-  - [ ] report precision/recall/F1 per technique, exact and overlap; **decide what counts
+  - [x] collapse our 16 techniques onto their 14 classes
+  - [x] report precision/recall/F1 per technique, exact and overlap; **decide what counts
         as overlap** and record it in `notes`
-  - [ ] disclose in `notes`: train/dev only, subset size, 2017–2019 corpus, dense labels
+  - [x] disclose in `notes`: train/dev only, subset size, 2017–2019 corpus, dense labels
 - [ ] `eval/report.py` → `results/latest.json`
 - [ ] `app/routes/evals.py` — `GET /eval/results`, no auth
 - [ ] Standalone eval page — render the numbers live from `GET /eval/results` (outside the extension)

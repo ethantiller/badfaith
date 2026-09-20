@@ -1,13 +1,12 @@
 import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal
 
-from backend.app.deps import ensure_quote_in_text
 from backend.app.ext.nemotron import NemotronClient
 from backend.app.pipeline.classify import resolve_doc_type
+from backend.app.pipeline.ground import verify_quotes
 from backend.app.pipeline.label import label_batch
 from backend.app.types import AnalyzeMeta, AnalyzeRequest, AnalyzeResponse, DocType
 from backend.app.utils.text import batch_paragraphs, sample_for_classification
@@ -92,19 +91,20 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
         raise AnalysisError(f"all {len(batches)} batches failed")
 
     paragraphs = {p.id: p.text for p in req.paragraphs}
-    article_json = json.dumps({"paragraphs": [{"id": p.id, "text": p.text} for p in req.paragraphs]})
 
-    # Use deps function to confirm flags and claims are in the original request
-    grounded_flags = _keep_grounded(flags, "flags", paragraphs, article_json)
-    grounded_claims = _keep_grounded(claims, "claims", paragraphs, article_json)
+    # Drop any flag or claim whose quote is not really in its paragraph
+    result = verify_quotes(flags, claims, paragraphs)
 
     def in_article_order(item):
         return item.paragraph_id, paragraphs[item.paragraph_id].find(item.quote)
 
-    kept_flags = sorted(grounded_flags, key=in_article_order)
+    kept_flags = [
+        flag.model_copy(update={"flags_dropped": result.flags_dropped})
+        for flag in sorted(result.flags, key=in_article_order)
+    ]
     kept_claims = [
         claim.model_copy(update={"id": f"c{n}"})
-        for n, claim in enumerate(sorted(grounded_claims, key=in_article_order))
+        for n, claim in enumerate(sorted(result.claims, key=in_article_order))
     ]
     
     if len(kept_flags) > 10 and doc_type == DocType.NEWS:
@@ -122,13 +122,3 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
             latency_ms=round((perf_counter() - started) * 1000),
         ),
     )
-
-
-def _keep_grounded(items, key: str, paragraphs: dict[int, str], article_json: str) -> list:
-    #
-    return [
-        item
-        for item in items
-        if item.paragraph_id in paragraphs
-        and ensure_quote_in_text(json.dumps({key: [{"quote": item.quote}]}), article_json)
-    ]
