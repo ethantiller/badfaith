@@ -29,8 +29,7 @@ async def lifespan(app: FastAPI):
     # Initialize shared HTTP client for external calls
     app.state.http_client = httpx.AsyncClient(timeout=settings.nemotron_timeout_s)
 
-    # Analysis pipeline. Without an NVIDIA key the server still boots (/coverage works)
-    # and /analyze answers 503.
+    # Analysis pipeline for analyze.
     try:
         app.state.pipeline = PipelineContext(
             nemotron=NemotronClient(app.state.http_client, timeout_s=settings.nemotron_timeout_s),
