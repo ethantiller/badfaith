@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,13 +12,15 @@ class Settings(BaseSettings):
 
     # Supabase
     supabase_url: str
-    supabase_key: str  # Maps to supabase_anon_key
+    supabase_anon_key: str = Field(
+        validation_alias=AliasChoices("SUPABASE_ANON_KEY", "SUPABASE_KEY")
+    )
 
     # CORS — set to specific extension ID in production
     extension_origin: str = "chrome-extension://*"
 
-    # Nemotron
-    nemotron_api_key: str = ""
+    # Nemotron (served through build.nvidia.com)
+    nvidia_api_key: str = ""
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nvidia_model_large: str = "nvidia/nemotron-3-super-120b-a12b"
     nvidia_model_small: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
@@ -47,16 +50,6 @@ class Settings(BaseSettings):
             url = "postgresql+asyncpg://" + url[13:]
 
         return url
-
-    @property
-    def supabase_anon_key(self) -> str:
-        """Alias for supabase_key."""
-        return self.supabase_key
-
-    @property
-    def nvidia_api_key(self) -> str:
-        """Alias for nemotron_api_key."""
-        return self.nemotron_api_key
 
 
 @lru_cache(maxsize=1)

@@ -53,7 +53,7 @@ export const TECHNIQUES: readonly Technique[] = [
 
 export type Severity = 'low' | 'medium' | 'high';
 export type VerificationStatus = 'supported' | 'contradicted' | 'unverified';
-export type DocType = 'news' | 'opinion' | 'other';
+export type DocType = 'news' | 'news_with_heavy_bias' | 'news_with_slight_bias' | 'opinion' | 'other';
 export type DocTypeSource = 'metadata' | 'model';
 export type ClaimType = 'statistic' | 'attributed_quote' | 'date_or_count';
 

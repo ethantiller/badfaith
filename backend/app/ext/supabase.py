@@ -3,7 +3,9 @@ import jwt
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-PROJECT_REF = "https://lrehidkikhwocmgmxqud.supabase.co"
+from backend.app.config import get_settings
+
+PROJECT_REF = get_settings().supabase_url
 JWKS_URL = f"{PROJECT_REF}/auth/v1/.well-known/jwks.json"
 EXPECTED_ISSUER = f"{PROJECT_REF}/auth/v1"
 
