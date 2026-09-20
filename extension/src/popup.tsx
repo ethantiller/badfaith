@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
+import { getActiveTabParagraphs } from './lib/get_paragraphs';
+import type { Paragraph } from './types';
 
 export default function Popup() {
   const [isReady, setIsReady] = useState(false);
+  const [_paragraphs, setParagraphs] = useState<Array<Paragraph>>([]);
 
   useEffect(() => {
     setIsReady(true);
+    getActiveTabParagraphs()
+      .then(setParagraphs)
+      .catch(() => setParagraphs([]));
   }, []);
 
   return (

@@ -47,13 +47,19 @@ export interface ParagraphAnalysis {
   doc_type?: string;
 }
 
+export interface Paragraph {
+  id: number;
+  text: string;
+}
+
+export type GetParagraphsResponse =
+  | { ok: true; paragraphs: Paragraph[] }
+  | { ok: false; error: string };
+
 export interface AnalyzeRequest {
   url: string;
-  paragraphs: Array<{
-    id: string;
-    text: string;
-    section_hint?: string;
-  }>;
+  section_hint: string | null;
+  paragraphs: Array<Paragraph>;
 }
 
 export interface AnalyzeResponse {

@@ -32,9 +32,12 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: false,
     rollupOptions: {
-      input: './src/main.tsx',
+      input: {
+        popup: './src/main.tsx',
+        content: './src/content.ts',
+      },
       output: {
-        entryFileNames: 'popup.js',
+        entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name].js',
         assetFileNames: 'assets/[name].[ext]',
       },
