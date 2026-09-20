@@ -181,9 +181,9 @@ else from working if it isn't done.
 - [x] Require **minimal-span** quotes in the prompt: only the words that carry the
       technique, not the whole sentence. SemEval's gold spans are short, and tight quotes
       make better highlights
-- [x] No flag filtering in `label.py` or `orchestrate.py` — no severity or confidence
-      cutoff. Only the grounding gate removes flags; display thresholds live in the
-      extension and the eval
+- [x] No flag filtering in `label.py`. `orchestrate.py` drops grounded flags below 0.85
+      confidence (`MIN_FLAG_CONFIDENCE`), and the bias tier counts only the survivors; the
+      extension applies the same 0.85 at display time and the eval does its own
 - [x] `app/pipeline/label.py` — `label_batch(paragraphs, doc_type, model, ctx)`
 - [x] Emit `confidence` per flag (feeds the calibration story, costs nothing)
 - [x] Claim extraction inside the same call: `statistic`, `attributed_quote`,
@@ -259,18 +259,18 @@ else from working if it isn't done.
 
 ### Tier 1 — build if ahead of schedule
 
-- [ ] **Confidence flag** — already in Max's list above, costs nothing, enables the
-      calibration curve in the eval
+- [x] **Confidence flag** — emitted per flag and now also used as a 0.85 display floor;
+      still enables the calibration curve in the eval
 - [ ] **Streaming batches** — render flags as each batch returns. No accuracy change, large
       perceived-speed change. Needs `chrome.runtime.connect` port messaging instead of
       one-shot `sendMessage`
 - [ ] **Article-level coverage button** — a "what are others saying about this story"
       button at the top of the panel, separate from the per-claim one. Same `/coverage`
       code path with the article's entities instead of a claim's
-- [ ] **Source diet** — classify every attributed quote by speaker type (government
-      official, company spokesperson, named independent expert, anonymous, unsourced), then
-      state the distribution. Mostly counting. New `sources` array on the response, no
-      other contract change. Strong because it's structural rather than a score
+- [~] **Source diet** — partly built as `citations`: every quoted passage gets a speaker and
+      a web-search-derived `speaker_role` (government, journalist, funder, anonymous, ...),
+      shown in the Claims tab with a fixed bias caveat. Still missing: stating the overall
+      distribution of speaker types across the article
 
 ### Tier 2 — real work, real payoff
 

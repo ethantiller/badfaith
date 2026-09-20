@@ -1,45 +1,49 @@
-// The analyzed report: a head with the doc type and re-run, three tabs, and a foot
-// with the highlights switch. Tabs unmount when hidden; anything that must survive a
+// The analyzed report: a head with the doc type, four tabs, and a foot with the
+// before/after wording switch. Tabs unmount when hidden; anything that must survive a
 // tab switch (coverage) is cached by the parent.
 import { useRef, useState } from 'react';
 import { DOC_TYPE_LABELS, docTypeSourceLabel } from '../../ui/labels';
-import type { PageStatus } from '../../types';
-import { Spinner } from '../Brand';
+import type { PageStatus, RewriteView } from '../../types';
 import ClaimsTab from './ClaimsTab';
 import CoverageTab, { type CoverageEntry } from './CoverageTab';
+import RewriteTab, { type RewriteRun } from './RewriteTab';
 import SummaryTab from './SummaryTab';
 
-const TABS = ['summary', 'claims', 'coverage'] as const;
+const TABS = ['summary', 'claims', 'coverage', 'rewrite'] as const;
 type TabId = (typeof TABS)[number];
 const TAB_LABELS: Record<TabId, string> = {
   summary: 'Summary',
   claims: 'Claims',
   coverage: 'Coverage',
+  rewrite: 'Rewrite',
 };
 
 interface Props {
   /** A page with a result; the parent guarantees it. */
   page: PageStatus;
-  analyzing: boolean;
   hotFlag: string | null;
   coverage: CoverageEntry | undefined;
-  onAnalyze(): void;
+  rewriteRun: RewriteRun | null;
   onFlagClick(id: string): void;
   onFlagHover(id: string | null): void;
   onClaimClick(id: string): void;
+  onCitationClick(id: string): void;
   onToggleHighlights(visible: boolean): void;
-  onClear(): void;
+  onRewriteView(view: RewriteView): void;
   onSearchCoverage(): void;
+  onRewrite(): void;
+  onRewriteClick(paragraphId: number, original: string): void;
 }
 
 export default function Report(props: Props) {
-  const { page, analyzing } = props;
+  const { page } = props;
   const result = page.result!;
   const [tab, setTab] = useState<TabId>('summary');
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
     summary: null,
     claims: null,
     coverage: null,
+    rewrite: null,
   });
 
   const docType = page.docType ?? 'unknown';
@@ -71,14 +75,6 @@ export default function Report(props: Props) {
             <h2 className="bf-report-title">{DOC_TYPE_LABELS[docType]}</h2>
             <p className="bf-report-sub">{docTypeSourceLabel(docType, result.doc_type_source)}</p>
           </div>
-          <button
-            type="button"
-            className="bf-text-button"
-            onClick={props.onAnalyze}
-            disabled={analyzing}
-          >
-            {analyzing ? <Spinner /> : 'Analyze again'}
-          </button>
         </div>
 
         {page.state === 'stale' && <p className="bf-notice">The article changed since the last run.</p>}
@@ -93,7 +89,7 @@ export default function Report(props: Props) {
         className="bf-tabs"
         role="tablist"
         aria-label="Report sections"
-        style={{ ['--bf-tab-index' as string]: TABS.indexOf(tab) }}
+        style={{ ['--bf-tab-index' as string]: TABS.indexOf(tab), ['--bf-tab-count' as string]: TABS.length }}
         onKeyDown={onKeyDown}
       >
         {TABS.map((id) => (
@@ -131,9 +127,23 @@ export default function Report(props: Props) {
             onFlagHover={props.onFlagHover}
           />
         )}
-        {tab === 'claims' && <ClaimsTab result={result} onClaimClick={props.onClaimClick} />}
+        {tab === 'claims' && (
+          <ClaimsTab
+            result={result}
+            onClaimClick={props.onClaimClick}
+            onCitationClick={props.onCitationClick}
+          />
+        )}
         {tab === 'coverage' && (
           <CoverageTab entry={props.coverage} onSearch={props.onSearchCoverage} />
+        )}
+        {tab === 'rewrite' && (
+          <RewriteTab
+            rewrites={page.rewrites}
+            run={props.rewriteRun}
+            onRewrite={props.onRewrite}
+            onFocus={props.onRewriteClick}
+          />
         )}
       </div>
 
@@ -146,9 +156,25 @@ export default function Report(props: Props) {
           />
           Show highlights
         </label>
-        <button type="button" className="bf-text-button" onClick={props.onClear}>
-          Clear
-        </button>
+        {page.rewriteReady && (
+          <div
+            className="bf-segmented"
+            role="group"
+            aria-label="Article wording"
+          >
+            {(['before', 'after'] as const).map((view) => (
+              <button
+                key={view}
+                type="button"
+                className="bf-segment"
+                aria-pressed={page.rewriteView === view}
+                onClick={() => props.onRewriteView(view)}
+              >
+                {view === 'before' ? 'Before' : 'After'}
+              </button>
+            ))}
+          </div>
+        )}
       </footer>
     </div>
   );

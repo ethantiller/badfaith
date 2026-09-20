@@ -61,7 +61,7 @@ The user opens a news article on a supported site.
 
 6. **The content script renders everything in the page.** It walks each flagged
    `paragraph_id`, finds the quote string inside that one known DOM element, and wraps it
-   in a highlight with a hover tooltip. Doc type, technique summary, claims and the
+   in a highlight with a hover tooltip. Doc type, technique summary, claims, quoted sources and the
    user-triggered "Verify" action (which calls `/coverage`) all live in in-page UI
    injected by the content script (section 3.1). There is no separate report surface.
 
@@ -135,7 +135,9 @@ and no styles at all.
 - **Highlights** on flagged quotes, wrapped with `Range`/`TreeWalker`, never `innerHTML`.
   Hover or keyboard focus shows a tooltip: technique, severity, confidence, explanation,
   paragraph number. Hovering a phrase also lights the matching row in the side panel, and
-  hovering a row lights the phrase, over one message each way.
+  hovering a row lights the phrase, over one message each way. Quoted sources are
+  highlighted with a dotted underline, and hovering one shows the same tooltip with the
+  speaker, their role and a fixed caveat; clicking a citation in the panel scrolls to it.
 - **Error states** — rendered in the side panel ("Too many requests. Try again later."). A
   failure never blocks or alters the article text.
 
@@ -242,6 +244,15 @@ Response:
       "entities": ["unemployment", "August 2026"]
     }
   ],
+  "citations": [
+    {
+      "id": "s0",
+      "paragraph_id": 4,
+      "quote": "we will not raise taxes",
+      "speaker": "Jane Doe, Health Secretary",
+      "speaker_role": "government_official | elected_politician | journalist | academic_expert | industry_corporate | funder_donor | advocacy_activist | think_tank | legal_court | private_individual | anonymous | unknown"
+    }
+  ],
   "coverage": {
     "related": [ { "outlet": "...", "url": "...", "headline": "..." } ],
     "omissions": [ { "summary": "...", "corroborating_urls": ["..."] } ]
@@ -250,7 +261,8 @@ Response:
 }
 ```
 
-Claims carry no verification status here. Verification is `/coverage`, which is
+Claims carry no verification status here. Citations are quoted words with the speaker the
+paragraph names and a `speaker_role` looked up from web search (stage 3b). Verification is `/coverage`, which is
 user-triggered and returns related sources and omissions of its own.
 
 Two properties matter. Every finding carries a `paragraph_id`, so the extension searches
@@ -275,12 +287,22 @@ with `asyncio.gather`. For each batch, returns technique labels with the exact q
 an explanation. Batching rather than per-paragraph calls keeps latency and token cost
 down while preserving enough local context to judge tone. Quotes are the minimal words
 that carry the technique, not whole sentences, so highlights are tight and spans line up
-with SemEval's gold spans. The pipeline never filters flags by severity or confidence;
-only the grounding gate removes one.
+with SemEval's gold spans. Only the grounding gate and a confidence floor remove a flag:
+flags the model scores below 0.85 are dropped in `run_analysis` (`MIN_FLAG_CONFIDENCE`), and
+the document's bias tier is counted from the surviving flags only. Claims and citations never
+affect it.
 
 **Stage 3 — Claim extractor (large model).** Pulls checkable assertions — statistics,
 attributed quotes, dates — each anchored to a paragraph and quote. Output feeds stage 4
 and the claims list in the UI.
+
+**Stage 3b — Citation speakers (large model, then web search).** Runs in parallel with
+stage 2 for each batch, over only the paragraphs that contain a quotation mark. It returns
+each quoted passage with the speaker the paragraph names (`anonymous` if unnamed). After
+grounding, each distinct named speaker is looked up with a DuckDuckGo text search and one
+small-model call assigns a `speaker_role` from the snippets alone; no evidence means
+`unknown`. The role picks a fixed bias caveat in the UI, so no model writes claims about
+bias. A failure here loses citations or roles, never the request.
 
 **Stage 4 — Cross-source judge (large model).** Takes the extracted claims and the
 article's core event, queries GDELT for other outlets covering the same story within a

@@ -11,6 +11,8 @@ export const MAX_TITLE_CHARS = 512;
 /** Client-side cap until the backend defines one for /coverage. */
 export const MAX_ENTITIES = 20;
 export const MAX_ENTITY_CHARS = 200;
+export const MAX_REWRITE_ITEMS = 40;
+export const MAX_QUOTE_CHARS = 1_000;
 
 // --- Enums ---
 
@@ -59,6 +61,21 @@ export type DocType = 'news' | 'news_with_heavy_bias' | 'news_with_slight_bias' 
 export type DocTypeSource = 'metadata' | 'model';
 export type ClaimType = 'statistic' | 'attributed_quote' | 'date_or_count';
 
+/** What a quoted speaker is, from search evidence. Locked list; mirrors `SpeakerRole` in app/types.py. */
+export type SpeakerRole =
+  | 'government_official'
+  | 'elected_politician'
+  | 'journalist'
+  | 'academic_expert'
+  | 'industry_corporate'
+  | 'funder_donor'
+  | 'advocacy_activist'
+  | 'think_tank'
+  | 'legal_court'
+  | 'private_individual'
+  | 'anonymous'
+  | 'unknown';
+
 /** What the content script scraped from the page. `null` means nothing found. */
 export type SectionHint = 'opinion' | 'news' | null;
 
@@ -86,6 +103,15 @@ export interface Claim {
   entities: string[];
 }
 
+export interface Citation {
+  id: string;
+  paragraph_id: number;
+  quote: string;
+  /** As the paragraph names them, or "anonymous". */
+  speaker: string;
+  speaker_role: SpeakerRole;
+}
+
 export interface AnalyzeMeta {
   cached: boolean;
   doc_hash: string;
@@ -106,6 +132,7 @@ export interface AnalyzeResponse {
   doc_type_source: DocTypeSource;
   flags: Flag[];
   claims: Claim[];
+  citations: Citation[];
   meta: AnalyzeMeta;
 }
 
@@ -136,6 +163,45 @@ export interface CoverageResponse {
   summary: string;
   related: RelatedSource[];
   meta: CoverageMeta;
+}
+
+// --- Neutral rewrite ---
+
+export interface RewriteItem {
+  paragraph_id: number;
+  /** The whole paragraph, for context. `quote` must appear verbatim in it. */
+  text: string;
+  quote: string;
+  technique: Technique | null;
+  /** The labeler's one-sentence reason for the flag; steers the rewrite. */
+  explanation: string;
+}
+
+export interface RewriteRequest {
+  doc_hash: string;
+  title: string;
+  items: RewriteItem[];
+}
+
+export interface Rewrite {
+  paragraph_id: number;
+  /** Echoed from the request, so it is always the article's own wording. */
+  original: string;
+  rewrite: string;
+}
+
+/** Which wording the article currently shows. */
+export type RewriteView = 'before' | 'after';
+
+export interface RewriteMeta {
+  model_route: string;
+  latency_ms: number;
+}
+
+export interface RewriteResponse {
+  doc_hash: string;
+  rewrites: Rewrite[];
+  meta: RewriteMeta;
 }
 
 export interface HealthResponse {
@@ -189,6 +255,7 @@ export interface AuthState {
 export type BgRequest =
   | { kind: 'ANALYZE_REQUEST'; payload: AnalyzeRequest }
   | { kind: 'COVERAGE_REQUEST'; payload: CoverageRequest }
+  | { kind: 'REWRITE_REQUEST'; payload: RewriteRequest }
   | { kind: 'AUTH_STATUS' }
   | { kind: 'AUTH_SIGN_IN'; email: string; password: string }
   | { kind: 'AUTH_SIGN_UP'; email: string; password: string; isAgeVerified: boolean }
@@ -225,13 +292,23 @@ export interface PageStatus {
   /** The full result, so the side panel can render the report without a second request. */
   result: AnalyzeResponse | null;
   highlightsVisible: boolean;
+  /** A neutral rewrite has been fetched, so the article can show it. */
+  rewriteReady: boolean;
+  /** The rewrites the article is carrying; the content script is their only home. */
+  rewrites: Rewrite[] | null;
+  rewriteView: RewriteView;
 }
 
 export type TabRequest =
   | { kind: 'PAGE_STATUS' }
   | { kind: 'RUN_ANALYZE' }
+  | { kind: 'RUN_REWRITE' }
+  | { kind: 'SET_REWRITE_VIEW'; view: RewriteView }
+  /** Scroll the article to the passage a rewrite replaced. */
+  | { kind: 'FOCUS_REWRITE'; paragraph_id: number; original: string }
   | { kind: 'FOCUS_FLAG'; id: string }
   | { kind: 'FOCUS_CLAIM'; id: string }
+  | { kind: 'FOCUS_CITATION'; id: string }
   | { kind: 'SET_HOT_FLAG'; id: string | null }
   | { kind: 'TOGGLE_HIGHLIGHTS'; visible: boolean }
   | { kind: 'CLEAR' };

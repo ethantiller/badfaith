@@ -38,6 +38,18 @@ export async function sendToTab(tabId: number, message: TabRequest): Promise<Pag
   }
 }
 
+/**
+ * A tab request whose reply is not a PageStatus. The content script owns the paragraph
+ * text, so a rewrite is built and sent there and its outcome comes back through here.
+ */
+export async function requestFromTab<T>(tabId: number, message: TabRequest): Promise<BgResult<T>> {
+  try {
+    return (await chrome.tabs.sendMessage(tabId, message)) as BgResult<T>;
+  } catch (error) {
+    return { ok: false, code: 'network', message: asMessage(error) };
+  }
+}
+
 /** The side panel addressing whichever tab is currently active. */
 export async function sendToActiveTab(message: TabRequest): Promise<PageStatus | null> {
   try {

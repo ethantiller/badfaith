@@ -2,7 +2,7 @@
 // tab is on screen. The panel stays open across tab switches, so it has to track which
 // tab it is currently showing itself.
 import { useEffect, useRef, useState } from 'react';
-import { isOwnMessage, sendToBackground, sendToTab } from '../../messaging';
+import { isOwnMessage, requestFromTab, sendToBackground, sendToTab } from '../../messaging';
 import { describeError, isRetryable } from '../../messaging/errors';
 import { plural } from '../../ui/labels';
 import type {
@@ -11,12 +11,15 @@ import type {
   CoverageResponse,
   HoverBroadcast,
   PageStatus,
+  RewriteResponse,
+  RewriteView,
   TabRequest,
 } from '../../types';
 import { Brand, Dots } from '../Brand';
 import AuthForm from './AuthForm';
 import type { CoverageEntry } from './CoverageTab';
 import Report from './Report';
+import type { RewriteRun } from './RewriteTab';
 
 function hasReport(page: PageStatus | null): page is PageStatus & { result: NonNullable<PageStatus['result']> } {
   return page !== null && page.result !== null && (page.state === 'done' || page.state === 'stale');
@@ -53,6 +56,7 @@ export default function SidePanel() {
   const [leaving, setLeaving] = useState(false);
   const [hotFlag, setHotFlag] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<Record<string, CoverageEntry>>({});
+  const [rewriteRun, setRewriteRun] = useState<RewriteRun | null>(null);
 
   // The tab the panel is currently reporting on. A ref as well as state, because the
   // tab-tracking listeners close over it once and must always see the latest value.
@@ -63,6 +67,7 @@ export default function SidePanel() {
     setTabId(id);
     setHotFlag(null);
     setLeaving(false);
+    setRewriteRun(null);
   }
 
   function toTab(message: TabRequest): void {
@@ -174,27 +179,14 @@ export default function SidePanel() {
     void runAnalyze();
   }
 
-  function onClear() {
-    toTab({ kind: 'CLEAR' });
-    setHotFlag(null);
-    setPage((prev) =>
-      prev
-        ? {
-            ...prev,
-            result: null,
-            state: 'idle',
-            flags: 0,
-            docType: null,
-            message: null,
-            highlightsVisible: true,
-          }
-        : prev,
-    );
-  }
-
   function onToggleHighlights(visible: boolean) {
     toTab({ kind: 'TOGGLE_HIGHLIGHTS', visible });
     setPage((prev) => (prev ? { ...prev, highlightsVisible: visible } : prev));
+  }
+
+  function onRewriteView(view: RewriteView) {
+    toTab({ kind: 'SET_REWRITE_VIEW', view });
+    setPage((prev) => (prev ? { ...prev, rewriteView: view } : prev));
   }
 
   async function searchCoverage() {
@@ -216,6 +208,24 @@ export default function SidePanel() {
       ? { status: 'done', data: response.data }
       : { status: 'error', message: describeError(response), retryable: isRetryable(response.code) };
     setCoverage((prev) => ({ ...prev, [hash]: entry }));
+  }
+
+  async function runRewrite() {
+    const id = currentTabId.current;
+    if (id === null || !hasReport(page)) return;
+
+    setRewriteRun({ status: 'loading' });
+    const response = await requestFromTab<RewriteResponse>(id, { kind: 'RUN_REWRITE' });
+    if (currentTabId.current !== id) return;
+
+    if (!response.ok) {
+      setRewriteRun({ status: 'error', message: describeError(response), retryable: isRetryable(response.code) });
+      return;
+    }
+
+    // The rewrite now lives in the article; read it back, with the toggle state, from there.
+    setRewriteRun(null);
+    setPage(await sendToTab(id, { kind: 'PAGE_STATUS' }));
   }
 
   if (!ready) {
@@ -257,16 +267,21 @@ export default function SidePanel() {
           coverage={hasReport(page) ? coverage[page.result.meta.doc_hash] : undefined}
           onAnalyzeClick={() => setLeaving(true)}
           onButtonLeft={onButtonLeft}
-          onAnalyze={() => void runAnalyze()}
           onFlagClick={(id) => toTab({ kind: 'FOCUS_FLAG', id })}
           onFlagHover={(id) => {
             setHotFlag(id);
             toTab({ kind: 'SET_HOT_FLAG', id });
           }}
           onClaimClick={(id) => toTab({ kind: 'FOCUS_CLAIM', id })}
+          onCitationClick={(id) => toTab({ kind: 'FOCUS_CITATION', id })}
           onToggleHighlights={onToggleHighlights}
-          onClear={onClear}
+          onRewriteView={onRewriteView}
+          onRewriteClick={(paragraph_id, original) =>
+            toTab({ kind: 'FOCUS_REWRITE', paragraph_id, original })
+          }
+          rewriteRun={rewriteRun}
           onSearchCoverage={() => void searchCoverage()}
+          onRewrite={() => void runRewrite()}
         />
       </div>
 
@@ -295,13 +310,16 @@ interface StageProps {
   coverage: CoverageEntry | undefined;
   onAnalyzeClick(): void;
   onButtonLeft(event: React.TransitionEvent<HTMLDivElement>): void;
-  onAnalyze(): void;
   onFlagClick(id: string): void;
   onFlagHover(id: string | null): void;
   onClaimClick(id: string): void;
+  onCitationClick(id: string): void;
   onToggleHighlights(visible: boolean): void;
-  onClear(): void;
+  onRewriteView(view: RewriteView): void;
+  onRewriteClick(paragraphId: number, original: string): void;
+  rewriteRun: RewriteRun | null;
   onSearchCoverage(): void;
+  onRewrite(): void;
 }
 
 const PROGRESS_STEPS = [
@@ -360,7 +378,7 @@ function Stage(props: StageProps) {
     );
   }
 
-  // A re-run keeps the old report on screen (the head shows a spinner) rather than
+  // A run that started while a report is on screen keeps that report rather than
   // replacing it with dots.
   if (analyzing && !hasReport(page)) {
     return (
@@ -378,16 +396,18 @@ function Stage(props: StageProps) {
     return (
       <Report
         page={page}
-        analyzing={analyzing}
         hotFlag={props.hotFlag}
         coverage={props.coverage}
-        onAnalyze={props.onAnalyze}
+        rewriteRun={props.rewriteRun}
         onFlagClick={props.onFlagClick}
         onFlagHover={props.onFlagHover}
         onClaimClick={props.onClaimClick}
+        onCitationClick={props.onCitationClick}
         onToggleHighlights={props.onToggleHighlights}
-        onClear={props.onClear}
+        onRewriteView={props.onRewriteView}
+        onRewriteClick={props.onRewriteClick}
         onSearchCoverage={props.onSearchCoverage}
+        onRewrite={props.onRewrite}
       />
     );
   }

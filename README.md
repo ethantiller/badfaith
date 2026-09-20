@@ -83,6 +83,15 @@ runs: 400 paragraphs, 5,000 characters per paragraph, a 2,048-character URL, a
       "entities": ["unemployment", "August 2026"]
     }
   ],
+  "citations": [
+    {
+      "id": "s0",
+      "paragraph_id": 4,
+      "quote": "we will not raise taxes",
+      "speaker": "Jane Doe, Health Secretary",
+      "speaker_role": "government_official | elected_politician | journalist | academic_expert | industry_corporate | funder_donor | advocacy_activist | think_tank | legal_court | private_individual | anonymous | unknown"
+    }
+  ],
   "meta": {
     "cached": false,
     "doc_hash": "sha256:...",
@@ -92,6 +101,12 @@ runs: 400 paragraphs, 5,000 characters per paragraph, a 2,048-character URL, a
   }
 }
 ```
+
+`citations` are quoted words with the speaker the paragraph names. They come from a second model
+call over quoted paragraphs, run in parallel with labeling. Each distinct named speaker is then
+searched on the web (DDGS) and given a `speaker_role` from the snippets; no evidence means
+`unknown`, an unnamed source is `anonymous`. The bias note shown for a role is a fixed client-side
+map, never model text. The role list is locked in `app/types.py::SpeakerRole`.
 
 `claims` carry no verification status here. Verification is `/coverage`, which is
 user-triggered. `flags_dropped` is the grounding gate's reject count — surface it in the
@@ -201,6 +216,7 @@ backend/
 │   │   ├── orchestrate.py
 │   │   ├── classify.py
 │   │   ├── label.py
+│   │   ├── speakers.py
 │   │   ├── ground.py
 │   │   └── verify.py
 │   ├── clients/
@@ -210,6 +226,8 @@ backend/
 │   ├── prompts/
 │   │   ├── classify.txt
 │   │   ├── label.txt
+│   │   ├── speakers.txt
+│   │   ├── speaker_roles.txt
 │   │   └── verify.txt
 │   └── utils/
 │       ├── hashing.py
@@ -307,13 +325,17 @@ class PipelineContext:
     label_route: Literal["small", "large"] = "large"
     batch_size: int = 5
     max_concurrency: int = 8
-    budget_s: float = 25.0
+    budget_s: float = 60.0
 
 async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResponse
 ```
 The only function routes call. Sequence: resolve doc type → batch paragraphs → label the
-batches concurrently (at most `max_concurrency` model calls in flight) → ground → number
-claims `c0..cN` in article order → assemble. `label_route` picks which model labels and is
+batches concurrently (at most `max_concurrency` model calls in flight; each batch also runs
+the citation extraction alongside `label_batch`) → ground flags, claims and citations → drop
+flags below `MIN_FLAG_CONFIDENCE` (0.85) → look up each distinct speaker's role → number
+claims `c0..cN` and citations `s0..sN` in article order → assemble. The
+`news_with_slight_bias` / `news_with_heavy_bias` tier is counted from the surviving flags
+only, never from claims or citations. `label_route` picks which model labels and is
 what `meta.model_route` reports; the routing eval flips it.
 
 **Partial failure.** A batch that raises, or is still running when `budget_s` runs out, is
@@ -356,10 +378,11 @@ the technique, not the whole sentence. SemEval's gold spans are short phrases, s
 sentence-length quotes would score near zero on exact match, and short quotes also make
 better highlights.
 
-**Never hide flags in the pipeline.** Severity and confidence are recorded, not used to
-filter. `SEVERITY_POLICY` may change a flag's `severity`; the only thing that removes a flag
-is the grounding gate. Any display threshold is applied at render time in the extension,
-and the SemEval runner applies its own, so the eval always sees every grounded flag.
+**Confidence floor.** `label_batch` records confidence and filters nothing.
+`SEVERITY_POLICY` may change a flag's `severity`. `run_analysis` then drops any grounded flag
+below `MIN_FLAG_CONFIDENCE = 0.85`, and the extension applies the same 0.85 in
+`api/analyze.ts` as a second guard. The eval harness does not go through `run_analysis`, so
+it still sees every grounded flag.
 
 ### `app/pipeline/ground.py`
 ```python

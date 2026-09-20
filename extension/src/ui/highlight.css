@@ -145,7 +145,7 @@ html body span[data-badfaith='flag'][data-bf-pulse] {
 
 /* Claims read as a dashed underline with no fill, so they never look like flags
    at a glance — same accent, a different shape of mark. */
-html body span[data-badfaith='claim'] {
+html body span:is([data-badfaith='claim'], [data-badfaith='citation']) {
   --bf-hl: 166, 106, 8;
   --bf-hl-a: 0.6;
 
@@ -162,17 +162,17 @@ html body span[data-badfaith='claim'] {
 }
 
 @media (prefers-color-scheme: dark) {
-  html body span[data-badfaith='claim'] {
+  html body span:is([data-badfaith='claim'], [data-badfaith='citation']) {
     --bf-hl: 232, 169, 60 !important;
   }
 }
 
-html body span[data-badfaith='claim']:hover {
+html body span:is([data-badfaith='claim'], [data-badfaith='citation']):hover {
   --bf-hl-a: 0.9 !important;
   text-decoration-thickness: 2px !important;
 }
 
-html body span[data-badfaith='claim']:focus-visible {
+html body span:is([data-badfaith='claim'], [data-badfaith='citation']):focus-visible {
   outline: 2px solid rgba(var(--bf-hl), 0.9) !important;
   outline-offset: 3px !important;
 }
@@ -196,8 +196,14 @@ html body span[data-badfaith='claim']:focus-visible {
   }
 }
 
-html body span[data-badfaith='claim'][data-bf-pulse] {
+html body span:is([data-badfaith='claim'], [data-badfaith='citation'])[data-bf-pulse] {
   animation: bf-found-claim 1.3s cubic-bezier(0.22, 0.61, 0.25, 1) both !important;
+}
+
+/* Quoted sources: the claim underline, dotted instead of dashed. */
+html body span[data-badfaith='citation'] {
+  text-decoration-style: dotted !important;
+  text-decoration-thickness: 2px !important;
 }
 
 html[data-badfaith-highlights='off'] body span[data-badfaith] {
@@ -216,7 +222,7 @@ html[data-badfaith-highlights='off'] body span[data-badfaith] {
   /* The stroke still arrives and the found-bloom still resolves; neither travels. */
   html body span[data-badfaith='flag'][data-bf-ink],
   html body span[data-badfaith='flag'][data-bf-pulse],
-  html body span[data-badfaith='claim'][data-bf-pulse] {
+  html body span:is([data-badfaith='claim'], [data-badfaith='citation'])[data-bf-pulse] {
     animation-duration: 1ms !important;
     animation-delay: 0ms !important;
   }

@@ -8,11 +8,14 @@ from backend.app.ext.nemotron import NemotronClient
 from backend.app.pipeline.classify import resolve_doc_type
 from backend.app.pipeline.ground import verify_quotes
 from backend.app.pipeline.label import label_batch
+from backend.app.pipeline.speakers import extract_citations, resolve_roles
 from backend.app.types import AnalyzeMeta, AnalyzeRequest, AnalyzeResponse, DocType
 from backend.app.utils.hashing import doc_hash
 from backend.app.utils.text import batch_paragraphs, sample_for_classification
 
 logger = logging.getLogger(__name__)
+
+MIN_FLAG_CONFIDENCE = 0.85  # flags the model is less sure of are not shown or counted
 
 
 class AnalysisError(Exception):
@@ -47,10 +50,24 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
     batches = batch_paragraphs(req.paragraphs, ctx.batch_size)
     slots = asyncio.Semaphore(ctx.max_concurrency)
 
-    # Wrapper function that acquires a semaphore slot before calling label_batch
+    async def cite(batch):
+        # Citations are best-effort: a failed extraction loses this batch's citations only.
+        try:
+            async with slots:
+                return await extract_citations(batch, model, ctx)
+        except Exception as error:
+            logger.warning("citation extraction failed: %s: %s", type(error).__name__, error)
+            return []
+
+    # Wrapper that runs the label call and the citation call side by side for one batch.
+    # Only the label call decides whether the batch failed.
     async def run(batch):
-        async with slots:
-            return await label_batch(batch, doc_type, model, ctx)
+        async def label():
+            async with slots:
+                return await label_batch(batch, doc_type, model, ctx)
+
+        (flags, claims), citations = await asyncio.gather(label(), cite(batch))
+        return flags, claims, citations
 
     # Schedule all batch tasks immediately (they queue for semaphore slots as needed)
     tasks = [asyncio.create_task(run(batch)) for batch in batches]
@@ -68,7 +85,7 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
     # Gracefully wait for cancelled tasks to shut down
     await asyncio.gather(*pending, return_exceptions=True)
 
-    flags, claims, failed = [], [], len(pending)
+    flags, claims, citations, failed = [], [], [], len(pending)
 
     # Loop through all tasks to collect results
     for task in tasks:
@@ -82,9 +99,10 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
             logger.warning("batch failed: %s: %s", type(error).__name__, error)
             continue
         # Extract and accumulate flags and claims from successful tasks
-        batch_flags, batch_claims = task.result()
+        batch_flags, batch_claims, batch_citations = task.result()
         flags += batch_flags
         claims += batch_claims
+        citations += batch_citations
 
     if failed:
         logger.warning("analysis degraded: %d of %d batches failed", failed, len(batches))
@@ -93,8 +111,14 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
 
     paragraphs = {p.id: p.text for p in req.paragraphs}
 
-    # Drop any flag or claim whose quote is not really in its paragraph
-    result = verify_quotes(flags, claims, paragraphs)
+    # Use deps function to confirm flags and claims are in the original request
+    grounded_flags = [
+        flag
+        for flag in _keep_grounded(flags, "flags", paragraphs, article_json)
+        if flag.confidence >= MIN_FLAG_CONFIDENCE
+    ]
+    grounded_claims = _keep_grounded(claims, "claims", paragraphs, article_json)
+    grounded_citations = _keep_grounded(citations, "citations", paragraphs, article_json)
 
     def in_article_order(item):
         return item.paragraph_id, paragraphs[item.paragraph_id].find(item.quote)
@@ -105,9 +129,29 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
     ]
     kept_claims = [
         claim.model_copy(update={"id": f"c{n}"})
-        for n, claim in enumerate(sorted(result.claims, key=in_article_order))
+        for n, claim in enumerate(sorted(grounded_claims, key=in_article_order))
     ]
     
+    # Look up each distinct speaker once; whatever is not resolved in time stays unknown.
+    remaining = max(ctx.budget_s - (perf_counter() - started), 0.0)
+    try:
+        roles = await asyncio.wait_for(
+            resolve_roles([c.speaker for c in grounded_citations], req.title, ctx), timeout=remaining
+        )
+    except asyncio.TimeoutError:
+        logger.warning("speaker lookup ran out of time budget")
+        roles = {}
+    kept_citations = [
+        citation.model_copy(
+            update={
+                "id": f"s{n}",
+                "speaker_role": roles.get(citation.speaker, citation.speaker_role),
+            }
+        )
+        for n, citation in enumerate(sorted(grounded_citations, key=in_article_order))
+    ]
+
+    # Bias tier comes only from the confident flagged phrases; claims and citations never count.
     if len(kept_flags) > 10 and doc_type == DocType.NEWS:
         doc_type = DocType.NEWS_WITH_HEAVY_BIAS
     elif 0 < len(kept_flags) <= 10 and doc_type == DocType.NEWS:
@@ -118,6 +162,7 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
         doc_type_source=source,
         flags=kept_flags,
         claims=kept_claims,
+        citations=kept_citations,
         meta=AnalyzeMeta(
             doc_hash=doc_hash(req.url, req.paragraphs),
             model_route=ctx.label_route,

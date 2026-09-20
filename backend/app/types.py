@@ -72,6 +72,23 @@ class ClaimType(StrEnum):
     DATE_OR_COUNT = "date_or_count"
 
 
+class SpeakerRole(StrEnum):
+    """Locked list. What a quoted speaker is, from search evidence; drives the bias note in the UI."""
+
+    GOVERNMENT_OFFICIAL = "government_official"
+    ELECTED_POLITICIAN = "elected_politician"
+    JOURNALIST = "journalist"
+    ACADEMIC_EXPERT = "academic_expert"
+    INDUSTRY_CORPORATE = "industry_corporate"
+    FUNDER_DONOR = "funder_donor"
+    ADVOCACY_ACTIVIST = "advocacy_activist"
+    THINK_TANK = "think_tank"
+    LEGAL_COURT = "legal_court"
+    PRIVATE_INDIVIDUAL = "private_individual"
+    ANONYMOUS = "anonymous"
+    UNKNOWN = "unknown"
+
+
 # --- Search / Coverage ---
 
 class Article(BaseModel):
@@ -159,6 +176,14 @@ class Claim(BaseModel):
     entities: list[str] = Field(default_factory=list)
 
 
+class Citation(BaseModel):
+    id: str = ""  # numbered s0..sN in article order, post-grounding
+    paragraph_id: int
+    quote: str
+    speaker: str  # as the paragraph names them, or "anonymous"
+    speaker_role: SpeakerRole = SpeakerRole.UNKNOWN
+
+
 class AnalyzeMeta(BaseModel):
     cached: bool = False
     doc_hash: str = ""  # filled by the route once hashing exists
@@ -170,7 +195,49 @@ class AnalyzeResponse(BaseModel):
     doc_type_source: DocTypeSource
     flags: list[Flag] = Field(default_factory=list)
     claims: list[Claim] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
     meta: AnalyzeMeta
+
+
+MAX_REWRITE_ITEMS = 40
+MAX_QUOTE_CHARS = 1000
+
+
+class RewriteItem(BaseModel):
+    paragraph_id: int = Field(ge=0)
+    text: str = Field(min_length=1, max_length=MAX_CHARS_PER_PARAGRAPH)  # the paragraph, for context
+    quote: str = Field(min_length=1, max_length=MAX_QUOTE_CHARS)  # the flagged passage to rewrite
+    technique: Technique | None = None
+    explanation: str = Field(default="", max_length=1000)  # why the labeler flagged it
+
+    @model_validator(mode="after")
+    def _quote_in_text(self) -> Self:
+        if self.quote not in self.text:
+            raise ValueError(f"quote is not verbatim in paragraph {self.paragraph_id}")
+        return self
+
+
+class RewriteRequest(BaseModel):
+    doc_hash: str = Field(max_length=128)
+    title: str = Field(max_length=500)
+    items: list[RewriteItem] = Field(min_length=1, max_length=MAX_REWRITE_ITEMS)
+
+
+class Rewrite(BaseModel):
+    paragraph_id: int
+    original: str  # echoed from the request, never model output, so it is always verbatim
+    rewrite: str
+
+
+class RewriteMeta(BaseModel):
+    model_route: str
+    latency_ms: int
+
+
+class RewriteResponse(BaseModel):
+    doc_hash: str
+    rewrites: list[Rewrite] = Field(default_factory=list)
+    meta: RewriteMeta
 
 
 __all__ = [
@@ -180,6 +247,7 @@ __all__ = [
     "DocType",
     "DocTypeSource",
     "ClaimType",
+    "SpeakerRole",
     "Article",
     "CoverageRequest",
     "RelatedSource",
@@ -194,6 +262,12 @@ __all__ = [
     "AnalyzeRequest",
     "Flag",
     "Claim",
+    "Citation",
     "AnalyzeMeta",
     "AnalyzeResponse",
+    "RewriteItem",
+    "RewriteRequest",
+    "Rewrite",
+    "RewriteMeta",
+    "RewriteResponse",
 ]

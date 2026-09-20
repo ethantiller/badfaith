@@ -4,6 +4,7 @@
 import { ApiError, getErrorMessage } from './api/client';
 import { sendAnalyzeRequest } from './api/analyze';
 import { sendCoverageRequest } from './api/coverage';
+import { sendRewriteRequest } from './api/rewrite';
 import { ContractError } from './api/contract';
 import {
   getSession,
@@ -78,6 +79,12 @@ function handle(message: BgRequest): Promise<BgResult<unknown>> {
       return attempt(async () => {
         await requireSession();
         return sendCoverageRequest(message.payload);
+      });
+
+    case 'REWRITE_REQUEST':
+      return attempt(async () => {
+        await requireSession();
+        return sendRewriteRequest(message.payload);
       });
 
     case 'AUTH_STATUS':

@@ -82,6 +82,15 @@ an oversized payload is a 422 before any handler runs:
       "entities": ["unemployment", "August 2026"]
     }
   ],
+  "citations": [
+    {
+      "id": "s0",
+      "paragraph_id": 4,
+      "quote": "we will not raise taxes",
+      "speaker": "Jane Doe, Health Secretary",
+      "speaker_role": "government_official | elected_politician | journalist | academic_expert | industry_corporate | funder_donor | advocacy_activist | think_tank | legal_court | private_individual | anonymous | unknown"
+    }
+  ],
   "meta": {
     "cached": false,
     "doc_hash": "sha256:...",
@@ -91,6 +100,12 @@ an oversized payload is a 422 before any handler runs:
   }
 }
 ```
+
+`citations` are quoted words with the speaker the paragraph names. They come from a second model
+call over quoted paragraphs, run in parallel with labeling. Each distinct named speaker is then
+searched on the web (DDGS) and given a `speaker_role` from the snippets; no evidence means
+`unknown`, an unnamed source is `anonymous`. The bias note shown for a role is a fixed client-side
+map, never model text. The role list is locked in `app/types.py::SpeakerRole`.
 
 `claims` carry no verification status here. Verification is `/coverage`, which is
 user-triggered. `flags_dropped` is the grounding gate's reject count — surface it in the
@@ -122,6 +137,45 @@ panel, it's a credibility signal. `model_route` is the tier that labeled the art
     { "summary": "Other outlets note the figure excludes seasonal workers.", "corroborating_urls": ["..."] }
   ],
   "meta": { "sources_queried": 47, "latency_ms": 3200 }
+}
+```
+
+### `POST /rewrite` request
+
+User-triggered. Rewrites the flagged (opinionated) passages from `/analyze` in neutral
+language. The extension builds `items` from `flags`, attaching each flag's paragraph text
+for context. Every `quote` must appear verbatim in its `text`, or the request is a 422.
+At most 40 items.
+
+```json
+{
+  "doc_hash": "sha256:...",
+  "title": "Senate passes funding bill",
+  "items": [
+    {
+      "paragraph_id": 3,
+      "text": "The senator's disastrous, reckless bill passed on Tuesday.",
+      "quote": "disastrous, reckless",
+      "technique": "loaded_language",
+      "explanation": "Charged adjectives frame the bill as harmful."
+    }
+  ]
+}
+```
+
+### `POST /rewrite` response
+
+`original` is echoed from the request, never model output, so it is always the article's
+own wording. The model supplies only `rewrite`; a passage it returns nothing usable for is
+omitted.
+
+```json
+{
+  "doc_hash": "sha256:...",
+  "rewrites": [
+    { "paragraph_id": 3, "original": "disastrous, reckless", "rewrite": "contested" }
+  ],
+  "meta": { "model_route": "large", "latency_ms": 2100 }
 }
 ```
 
@@ -203,14 +257,15 @@ backend/
 │   ├── ext/                   (External service integrations)
 │   │   ├── __init__.py
 │   │   ├── nemotron.py        (NemotronClient, the only caller of the model API)
-│   │   └── search.py          (DuckDuckGo web search wrapper)
+│   │   └── search.py          (DuckDuckGo news search and speaker text search)
 │   ├── pipeline/              (Analysis pipeline)
 │   │   ├── __init__.py
 │   │   ├── orchestrate.py     (PipelineContext, run_analysis)
 │   │   ├── classify.py        (doc type, severity policy)
 │   │   ├── label.py           (flags and claims per batch)
+│   │   ├── speakers.py        (citation extraction, speaker role lookup)
 │   │   └── ground.py          (grounding gate)
-│   ├── prompts/               (classify.txt, label.txt)
+│   ├── prompts/               (classify.txt, label.txt, speakers.txt, speaker_roles.txt)
 │   ├── schemas/
 │   │   └── models.py          (lenient Raw* shapes the model returns)
 │   ├── utils/
@@ -312,6 +367,13 @@ Searches DuckDuckGo news for coverage of a claim. Social and reference domains a
 dropped and only one result per domain is kept. The blocking `ddgs` call runs in a worker
 thread so it doesn't stall the event loop.
 
+```python
+async def search_speaker(name: str, context: str = "", *, max_results: int = 5) -> list[str]
+```
+A general (not news-only) DuckDuckGo text search for a quoted speaker, returning short
+`"title: body"` snippets. Reference sites are allowed. Any `DDGSException` gives an empty
+list, which the caller treats as no evidence.
+
 ### `app/pipeline/orchestrate.py`
 ```python
 @dataclass
@@ -322,19 +384,27 @@ class PipelineContext:
     label_route: Literal["small", "large"] = "large"
     batch_size: int = 5
     max_concurrency: int = 8
-    budget_s: float = 25.0
+    budget_s: float = 60.0
 
 async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResponse
 ```
 The only function routes call. Sequence: resolve doc type → batch paragraphs → label the
-batches concurrently (at most `max_concurrency` model calls in flight) → ground → number
-claims `c0..cN` in article order → assemble. `label_route` picks which model labels and is
+batches concurrently (at most `max_concurrency` model calls in flight; each batch also runs
+the citation extraction alongside `label_batch`) → ground flags, claims and citations → drop
+flags below `MIN_FLAG_CONFIDENCE` (0.85) → look up each distinct speaker's role → number
+claims `c0..cN` and citations `s0..sN` in article order → assemble.
+
+**Bias tier.** For a `news` document, `news_with_slight_bias` (1 to 10 flags) or
+`news_with_heavy_bias` (more than 10) is decided from the flags that survive the confidence
+floor. Claims and citations never count. `label_route` picks which model labels and is
 what `meta.model_route` reports; the routing eval flips it.
 
 **Partial failure.** A batch that raises, or is still running when `budget_s` runs out, is
 cancelled and logged; its paragraphs come back unlabeled and the request still succeeds. If
 *every* batch fails, `AnalysisError` is raised (the route answers 502) rather than returning
-a clean article that was never actually read. The failed-batch count is only logged for now:
+a clean article that was never actually read. A failed citation call or speaker lookup does
+not count as a failed batch: it only leaves that batch without citations, or a speaker
+`unknown`. The failed-batch count is only logged for now:
 `meta` has no field for it yet.
 
 ### `app/pipeline/classify.py`
@@ -371,10 +441,25 @@ the technique, not the whole sentence. SemEval's gold spans are short phrases, s
 sentence-length quotes would score near zero on exact match, and short quotes also make
 better highlights.
 
-**Never hide flags in the pipeline.** Severity and confidence are recorded, not used to
-filter. `SEVERITY_POLICY` may change a flag's `severity`; the only thing that removes a flag
-is the grounding gate. Any display threshold is applied at render time in the extension,
-and the SemEval runner applies its own, so the eval always sees every grounded flag.
+**Confidence floor.** `label_batch` records confidence and filters nothing.
+`SEVERITY_POLICY` may change a flag's `severity`. `run_analysis` then drops any grounded flag
+below `MIN_FLAG_CONFIDENCE = 0.85`, and the extension applies the same 0.85 in
+`api/analyze.ts` as a second guard. The eval harness does not go through `run_analysis`, so
+it still sees every grounded flag.
+
+### `app/pipeline/speakers.py`
+```python
+async def extract_citations(paragraphs: list[Paragraph], model: str, ctx) -> list[Citation]
+async def resolve_roles(speakers: list[str], title: str, ctx) -> dict[str, SpeakerRole]
+```
+`extract_citations` keeps only paragraphs containing a quotation mark (straight, curly,
+low-9 or guillemet) and makes one model call over them, returning `(paragraph_id, quote,
+speaker)`; a blank speaker becomes `anonymous`. It raises on failure and the orchestrator
+degrades. `resolve_roles` never raises: it searches each distinct named speaker (at most 15)
+with `search_speaker`, then makes one small-model call that classifies them from the
+snippets only. No snippets, a failed call, or an unrecognised role all leave `unknown`, and
+`anonymous` speakers are never searched. Citations are grounded like flags and claims; the
+`"citations"` key is checked by `deps.ensure_quote_in_text`.
 
 ### `app/pipeline/ground.py`
 ```python
@@ -543,6 +628,8 @@ type TabRequest =
   | { kind: "PAGE_STATUS" }
   | { kind: "RUN_ANALYZE" }
   | { kind: "FOCUS_FLAG"; id: string }
+  | { kind: "FOCUS_CLAIM"; id: string }
+  | { kind: "FOCUS_CITATION"; id: string }
   | { kind: "SET_HOT_FLAG"; id: string | null }
   | { kind: "TOGGLE_HIGHLIGHTS"; visible: boolean }
   | { kind: "CLEAR" };
@@ -580,15 +667,16 @@ body is logged to the worker console, because FastAPI's 422 detail names the fie
 message listener. `PAGE_STATUS` parses locally and reports whether this looks like an article,
 plus the stored result if one exists; `RUN_ANALYZE` parses, detects the section hint, sends
 one `ANALYZE_REQUEST`, then mounts the shadow host and applies highlights. `FOCUS_FLAG`,
-`SET_HOT_FLAG`, `TOGGLE_HIGHLIGHTS` and `CLEAR` come from the side panel and drive the same
+`FOCUS_CLAIM`, `FOCUS_CITATION`, `SET_HOT_FLAG`, `TOGGLE_HIGHLIGHTS` and `CLEAR` come from the side panel and drive the same
 functions the old in-page card used to call directly. No token ever reaches this file.
 It keeps the `Map<number, HTMLElement>` of paragraph ID to live DOM node in memory — that
 map never crosses a message boundary. A debounced `MutationObserver`, started only once an
 analysis has run, marks a changed article stale and re-applies wrappers the site dropped;
 it is disconnected while we wrap, so our own edits are never mistaken for the site's.
 The pieces are split by job: `surface.ts` creates and destroys the shadow host and tooltip,
-`hover.ts` delegates the highlight interactions from the document and broadcasts a
-`HOVER_FLAG` message so the side panel can light the matching row, and `watcher.ts` owns
+`hover.ts` delegates the highlight interactions from the document, shows the flag or
+citation tooltip, and for flags broadcasts a `HOVER_FLAG` message so the side panel can light
+the matching row, and `watcher.ts` owns
 the observer and its `silently()` guard.
 
 ### `src/article/paragraph_parser.ts`
@@ -622,6 +710,8 @@ export function applyFlags(flags: Flag[], nodeMap: Map<number, HTMLElement>): { 
 export function clearHighlights(): void
 export function focusFlag(id: string): void
 ```
+`applyClaims`/`focusClaim` and `applyCitations`/`focusCitation` reuse the same matching and
+wrapping; claims get a dashed underline and quoted sources a dotted one.
 Rebuilds the parser's normalized string for one paragraph while recording, per character,
 which text node and offset it came from; matches the quote in that string; then wraps each
 text-node segment with `Range.surroundContents`. Segments are wrapped last-first, because
@@ -643,7 +733,8 @@ light DOM, because the wrappers must sit inside the article's own text.
 ### `src/pages/sidepanel/`
 Sign in, sign up (13+ confirmation, required), forgot password, sign out, the Analyze
 button, and a three-tab report: Summary (technique tally, flagged phrases in reading
-order), Claims (click scrolls the article to the claim mark) and Coverage (a user-triggered
+order), Claims (two views: checkable claims and citations, each leading with who said it and
+their role; clicking either scrolls the article to its mark) and Coverage (a user-triggered
 `POST /coverage`, cached per `doc_hash` so tab switches do not refire it). It
 constructs no Supabase client; every auth action is a message to the background worker. It
 tracks whichever tab it is currently reporting on, since unlike a popup it stays open
