@@ -3,8 +3,12 @@
   "name": "Bad Faith",
   "version": "0.1.0",
   "description": "Audit news articles for rhetorical techniques and misinformation",
-  "permissions": ["storage"],
-  "host_permissions": ["https://*/*"],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*/*"
+  ],
   "icons": {
     "128": "icon.png"
   },
@@ -14,8 +18,25 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*/*"],
-      "js": ["content.js"]
+      "matches": [
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "reset.html"
+      ],
+      "matches": [
+        "https://*.supabase.co/*"
+      ]
     }
   ]
 }

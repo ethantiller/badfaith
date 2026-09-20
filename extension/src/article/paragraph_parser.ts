@@ -82,10 +82,22 @@ function findArticleElements(document: Document): Element[] {
   return [];
 }
 
-export function parseParagraphs(document: Document): Array<Paragraph> {
+export interface ParsedArticle {
+  paragraphs: Paragraph[];
+  /** Paragraph id to the live element it came from. Never crosses a message boundary. */
+  nodeMap: Map<number, HTMLElement>;
+  /** False when we fell back to document.body, which is what gates the Analyze button. */
+  foundArticleContainer: boolean;
+  /** The containers we read from, for the staleness observer. */
+  roots: Element[];
+}
+
+export function parseParagraphs(document: Document): ParsedArticle {
   const containers = findArticleElements(document);
+  const foundArticleContainer = containers.length > 0;
+
   let roots: Element[];
-  if (containers.length > 0) {
+  if (foundArticleContainer) {
     roots = containers;
   } else if (document.body) {
     roots = [document.body];
@@ -101,7 +113,16 @@ export function parseParagraphs(document: Document): Array<Paragraph> {
     }
   }
 
-  return Array.from(unique.entries())
-    .sort(([a], [b]) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
-    .map(([, text], id) => ({ id, text }));
+  const ordered = Array.from(unique.entries()).sort(([a], [b]) =>
+    a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+  );
+
+  const paragraphs: Paragraph[] = [];
+  const nodeMap = new Map<number, HTMLElement>();
+  ordered.forEach(([element, text], id) => {
+    paragraphs.push({ id, text });
+    nodeMap.set(id, element);
+  });
+
+  return { paragraphs, nodeMap, foundArticleContainer, roots };
 }

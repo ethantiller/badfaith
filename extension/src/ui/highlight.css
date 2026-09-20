@@ -1,0 +1,93 @@
+/* The only Bad Faith styles that live in the page's light DOM, because the wrapper
+   spans have to sit inside the article's own text. Every selector is namespaced to
+   [data-badfaith] so nothing leaks onto the site, and written as
+   `html body span[...]` with !important so site CSS cannot quietly win.
+   `color` is never set: the article keeps its own text color on both light and
+   dark pages, and the highlight reads as a wash plus an underline. */
+
+@keyframes bf-sweep {
+  from {
+    background-position: -110% 0;
+  }
+  to {
+    background-position: 210% 0;
+  }
+}
+
+@keyframes bf-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 -1.5px 0 0 rgba(47, 109, 180, 0.55);
+  }
+  50% {
+    box-shadow:
+      inset 0 -1.5px 0 0 rgba(47, 109, 180, 0.95),
+      0 0 0 3px rgba(47, 109, 180, 0.28);
+  }
+}
+
+html body span[data-badfaith='flag'] {
+  --bf-hl: 47, 109, 180;
+  --bf-hl-a: 0.18;
+  color: inherit !important;
+  background-color: transparent !important;
+  background-image: linear-gradient(
+    100deg,
+    rgba(var(--bf-hl), 0) 0%,
+    rgba(var(--bf-hl), var(--bf-hl-a)) 28%,
+    rgba(var(--bf-hl), calc(var(--bf-hl-a) * 2.1)) 50%,
+    rgba(var(--bf-hl), var(--bf-hl-a)) 72%,
+    rgba(var(--bf-hl), 0) 100%
+  ) !important;
+  background-repeat: no-repeat !important;
+  background-size: 220% 100% !important;
+  animation: bf-sweep 3.6s linear infinite !important;
+  box-shadow: inset 0 -1.5px 0 0 rgba(var(--bf-hl), 0.55) !important;
+  border-radius: 2px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  text-decoration: inherit !important;
+  cursor: help !important;
+}
+
+/* Severity modulates intensity, never hue: this reports a technique, not a verdict. */
+html body span[data-badfaith='flag'][data-bf-severity='low'] {
+  --bf-hl-a: 0.12 !important;
+}
+html body span[data-badfaith='flag'][data-bf-severity='medium'] {
+  --bf-hl-a: 0.18 !important;
+}
+html body span[data-badfaith='flag'][data-bf-severity='high'] {
+  --bf-hl-a: 0.26 !important;
+}
+
+html body span[data-badfaith='flag']:focus-visible {
+  outline: 2px solid rgba(var(--bf-hl), 0.9) !important;
+  outline-offset: 2px !important;
+}
+
+html body span[data-badfaith='flag'][data-bf-pulse] {
+  animation:
+    bf-sweep 3.6s linear infinite,
+    bf-pulse 0.9s ease-in-out 2 !important;
+}
+
+html[data-badfaith-highlights='off'] body span[data-badfaith='flag'] {
+  background-image: none !important;
+  box-shadow: none !important;
+  animation: none !important;
+  cursor: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html body span[data-badfaith='flag'],
+  html body span[data-badfaith='flag'][data-bf-pulse] {
+    animation: none !important;
+    background-position: 50% 0 !important;
+  }
+  html body span[data-badfaith='flag'][data-bf-pulse] {
+    box-shadow:
+      inset 0 -1.5px 0 0 rgba(var(--bf-hl), 0.95),
+      0 0 0 3px rgba(var(--bf-hl), 0.28) !important;
+  }
+}

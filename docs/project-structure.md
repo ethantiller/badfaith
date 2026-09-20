@@ -43,6 +43,20 @@ than the 80 lines you'd save.
 schema.org `articleSection`. `null` means nothing found — backend falls back to a model
 call.
 
+Size caps are expressed on the Pydantic model (`backend/app/types.py::AnalyzeRequest`), so
+an oversized payload is a 422 before any handler runs:
+
+| Cap | Value |
+|---|---|
+| `MAX_PARAGRAPHS` | 400 |
+| `MAX_PARAGRAPH_CHARS` | 5,000 |
+| `MAX_URL_CHARS` | 2,048 |
+| `MAX_TITLE_CHARS` | 512 |
+
+`backend/tests/unit/test_analyze_request.py` covers each one, plus a rejected
+`section_hint`. The TypeScript mirror re-exports the same numbers from
+`extension/src/types.ts`.
+
 ### `POST /analyze` response
 
 ```json
@@ -352,120 +366,175 @@ pipeline and the eval harness.
 
 ## 3. Extension
 
+Vite + React + TypeScript, Manifest V3, loaded unpacked. (WXT was the original plan; the
+scaffold that got built is plain Vite, and the three-pass build below is what that costs.)
+
 ```
 extension/
-├── wxt.config.ts
-├── package.json
-├── tsconfig.json
-├── entrypoints/
-│   ├── background.ts
-│   ├── content.ts
-│   └── sidepanel/
-│       ├── index.html
-│       ├── main.tsx
-│       └── App.tsx
-├── components/
-│   ├── FlagList.tsx
-│   ├── FlagCard.tsx
-│   ├── ClaimList.tsx
-│   ├── CoveragePanel.tsx
-│   ├── DocTypeBadge.tsx
-│   └── EvalPage.tsx
-├── lib/
-│   ├── types.ts
-│   ├── messaging.ts
-│   ├── api.ts
-│   ├── auth.ts
-│   ├── extract.ts
-│   ├── paragraphs.ts
-│   ├── highlight.ts
-│   └── metadata.ts
-└── assets/
+├── vite.config.ts        (one config, branching on BUILD_TARGET)
+├── public/               (manifest.json, popup.html, reset.html)
+├── dev/                  (design harness: a fake article driving the real UI; not shipped)
+└── src/
+    ├── background.ts     (entry: service worker, the only token holder and fetch caller)
+    ├── types.ts          (hand-mirror of app/types.py, plus the message envelopes)
+    ├── api/              (everything that speaks HTTP to the backend)
+    │   ├── client.ts     (ApiError, headers, 401 retry, postJson, getErrorMessage)
+    │   ├── contract.ts   (AnalyzeRequest validation; nothing is sent without it)
+    │   ├── analyze.ts    (POST /api/v1/analyze)
+    │   └── coverage.ts   (POST /api/v1/coverage)
+    ├── auth/             (the one Supabase client; background-only)
+    ├── article/          (reading and marking up the page)
+    │   ├── paragraph_parser.ts   (paragraphs + Map<number, HTMLElement>)
+    │   ├── detect_opinion_piece.ts
+    │   ├── doc_hash.ts           (paragraph hash, for staleness)
+    │   └── highlight.ts          (Range/TreeWalker wrap, unwrap, scroll-and-pulse)
+    ├── messaging/        (sendToBackground, sendToActiveTab, isOwnMessage)
+    ├── content/          (the content script)
+    │   ├── index.ts      (entry: state machine and the analysis flow)
+    │   ├── surface.ts    (shadow host, badge, card and tooltip, created on demand)
+    │   ├── hover.ts      (delegated hover and keyboard focus on a highlight)
+    │   └── watcher.ts    (debounced MutationObserver for staleness)
+    ├── ui/               (injected UI: plain DOM in a closed shadow root)
+    │   ├── dom.ts        (el/button helpers)
+    │   ├── host.ts  badge.ts  card.ts  tooltip.ts  labels.ts
+    │   └── tokens.css  injected.css  highlight.css  page.css
+    └── pages/            (the extension's own React screens)
+        ├── mount.tsx     (shared bootstrap: inject styles, render into #root)
+        ├── Brand.tsx     (shared heading and spinner)
+        ├── popup/        (sign in/up/out, reset, and the Analyze button)
+        └── reset/        (full tab for the password-recovery link)
 ```
 
-### `wxt.config.ts`
-Manifest config. `permissions: ["storage", "sidePanel", "activeTab"]`,
-`host_permissions` listing **only your five tested news domains**, no
-`externally_connectable`. Content script `matches` mirrors the host list.
+Four top-level concerns, each a directory: `api/` owns the wire, `auth/` owns the
+session, `article/` owns the page's text, and `ui/` owns pixels. `content/` and `pages/`
+are the two places those get assembled; `messaging/` is the seam between them.
 
-### `lib/types.ts`
-Hand-mirror of the Python schemas, plus the message envelope:
+### `vite.config.ts`
+Three build passes, because the entry points have different rules. The pages pass builds
+`popup` and `reset` as ES modules sharing a React chunk. `BUILD_TARGET=content` and
+`BUILD_TARGET=background` each produce one self-contained IIFE, because **a content script
+is a classic script**: a shared chunk or a surviving `import` statement breaks it at load.
+A fourth target, `preview`, builds the dev harness.
+
+There must be no `vite.config.js` in the directory — Vite resolves it *before* the
+TypeScript config, so edits to the `.ts` file would be silently ignored.
+
+### `public/manifest.json`
+`permissions: ["storage"]`, host permissions for the sites the content script runs on, no
+`externally_connectable`. Two additions beyond the scaffold: `background.service_worker`,
+and a `web_accessible_resources` entry exposing `reset.html` to `https://*.supabase.co/*`
+only, which is the origin that navigates to the password-recovery page. `chrome.tabs`
+needs no permission here because the popup only uses tab ids.
+
+### `src/types.ts`
+Hand-mirror of the Python schemas, plus two message envelopes.
+
+Popup and content script to the **background worker**:
 ```ts
-type Msg =
-  | { kind: "ANALYZE_REQUEST" }
-  | { kind: "ANALYZE_RESULT"; payload: AnalyzeResponse }
-  | { kind: "ANALYZE_ERROR"; error: string }
-  | { kind: "COVERAGE_REQUEST"; claimId: string }
-  | { kind: "COVERAGE_RESULT"; payload: CoverageResponse }
-  | { kind: "FOCUS_FLAG"; paragraphId: number; quote: string };
-```
-`FOCUS_FLAG` is the side panel telling the content script to scroll to and pulse a
-highlight. Cheap to build, disproportionately good in a demo.
+type BgRequest =
+  | { kind: "ANALYZE_REQUEST"; payload: AnalyzeRequest }
+  | { kind: "AUTH_STATUS" }
+  | { kind: "AUTH_SIGN_IN" | "AUTH_SIGN_UP" | "AUTH_SIGN_OUT" | "AUTH_RESET" | "AUTH_RECOVER"; ... };
 
-### `entrypoints/background.ts`
+type BgResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: "unauthenticated" | "rate_limited" | "network" | "server"
+                      | "invalid_request"; message: string };
+```
+
+Popup to the **active tab**, which needs no token and so does not go through the
+background:
+```ts
+type TabRequest = { kind: "PAGE_STATUS" } | { kind: "RUN_ANALYZE" };
+interface PageStatus { isArticle; paragraphs; state; flags; docType; message }
+```
+
+There is no `AUTH_STATE` broadcast. It existed so an already-open page could update its
+Analyze button after a sign-in; the button now lives in the popup, which reads auth state
+fresh every time it opens.
+
+### `src/background.ts`
 The trusted core. Registers `chrome.runtime.onMessage`, rejects any message where
-`sender.id !== chrome.runtime.id`. Holds no module-level mutable state — Chrome evicts
-idle workers, so anything durable goes to `chrome.storage.session`. Opens the side panel
-on action click. All network calls originate here.
+`sender.id !== chrome.runtime.id`. Holds no module-level mutable state — Chrome evicts idle
+workers. All network calls originate here; the content script never fetches the backend
+itself (its requests carry the page's origin, which CORS rejects, and it must not hold a
+token). It owns the only Supabase client in the extension, so nothing races on the refresh
+token. Errors are classified for the UI: a `ContractError` becomes `invalid_request`, 401
+and 403 become `unauthenticated`, 429 becomes `rate_limited`, any other server answer
+becomes `server`, and only a `fetch` that never reached a server becomes `network`. A 4xx
+body is logged to the worker console, because FastAPI's 422 detail names the field.
 
-### `entrypoints/content.ts`
-Runs in the page. No token ever reaches this file. On `ANALYZE_REQUEST`: extract, number,
-scrape metadata, send to background, await result, inject highlights. Keeps the
-`Map<number, HTMLElement>` of paragraph ID to live DOM node in memory — it never crosses
-a message boundary.
+### `src/content/`
+`index.ts` runs in the page and renders nothing until asked. On load it registers one
+message listener. `PAGE_STATUS` parses locally and reports whether this looks like an article;
+`RUN_ANALYZE` parses, detects the section hint, sends one `ANALYZE_REQUEST`, then mounts
+the shadow host, applies highlights and opens the card. No token ever reaches this file.
+It keeps the `Map<number, HTMLElement>` of paragraph ID to live DOM node in memory — that
+map never crosses a message boundary. A debounced `MutationObserver`, started only once an
+analysis has run, marks a changed article stale and re-applies wrappers the site dropped;
+it is disconnected while we wrap, so our own edits are never mistaken for the site's.
+The pieces are split by job: `surface.ts` creates and destroys everything on screen,
+`hover.ts` delegates the highlight interactions from the document, and `watcher.ts` owns
+the observer and its `silently()` guard.
 
-### `lib/extract.ts`
+### `src/article/paragraph_parser.ts`
 ```ts
-export function extractArticle(doc: Document): { title: string; root: HTMLElement } | null
-```
-Readability against a `doc.cloneNode(true)` — Readability mutates the document it's given,
-and mutating the live page breaks your highlight targets.
-
-### `lib/paragraphs.ts`
-```ts
-export function toParagraphs(root: HTMLElement): {
+export function parseParagraphs(document: Document): {
   paragraphs: Paragraph[];
   nodeMap: Map<number, HTMLElement>;
+  foundArticleContainer: boolean;
+  roots: Element[];
 }
 ```
-**The riskiest file in the project.** Every site nests article text differently. Skip
-elements under 40 characters, skip figure captions and pull quotes, and log the resulting
-paragraph count per domain during testing. If this produces different structures across
-your five sites, every downstream `paragraph_id` is wrong.
+**The riskiest file in the project.** Every site nests article text differently. It tries
+`<article>`, then a list of body-content selectors, and validates each candidate on
+paragraph count and total length. `foundArticleContainer` is false when it falls back to
+`document.body`, and that flag is what stops the popup offering Analyze on a non-article
+page. Text is `textContent` with whitespace runs collapsed to one space, then trimmed —
+`highlight.ts` reproduces that collapse exactly, so the two cannot drift.
 
-### `lib/metadata.ts`
+### `src/api/contract.ts`
 ```ts
-export function detectSection(doc: Document, url: string): "opinion" | "news" | null
+export function buildAnalyzeRequest(input: AnalyzeRequest): AnalyzeRequest  // or throws ContractError
 ```
-Checks URL path segments (`/opinion/`, `/commentary/`, `/editorial/`),
-`<meta property="article:section">`, and schema.org `articleSection`. Returns `null`
-freely — a wrong hint is worse than no hint.
+Hand-mirror of `AnalyzeRequest`'s validation, and the only path into
+`sendAnalyzeRequest`. Clamps the size caps, drops blank paragraph bodies, and throws on
+anything structurally wrong. Keep it in step with `backend/app/types.py`; the caps
+themselves are re-exported from `src/types.ts` so there is one set of numbers.
 
-### `lib/highlight.ts`
+### `src/article/highlight.ts`
 ```ts
-export function applyFlags(flags: Flag[], nodeMap: Map<number, HTMLElement>): void
+export function applyFlags(flags: Flag[], nodeMap: Map<number, HTMLElement>): { applied; skipped }
 export function clearHighlights(): void
-export function focusFlag(paragraphId: number, quote: string): void
+export function focusFlag(id: string): void
 ```
-Uses `Range` and `TreeWalker` to wrap the quote inside one known element. Never
-`innerHTML` replacement — that destroys event listeners the news site depends on and can
-blank the page. Tooltip content in a Shadow DOM. If the quote appears more than once
-in the paragraph, wrap the first occurrence — the same rule the grounding gate and the
-SemEval runner use.
+Rebuilds the parser's normalized string for one paragraph while recording, per character,
+which text node and offset it came from; matches the quote in that string; then wraps each
+text-node segment with `Range.surroundContents`. Segments are wrapped last-first, because
+splitting a text node at a later offset leaves every earlier offset in it valid. Never
+`innerHTML` replacement — that destroys listeners the news site depends on and can blank
+the page. Only 1:1 character substitutions are applied before matching (curly quotes, en
+and em dashes, non-breaking spaces); anything length-changing, such as NFKC, would
+invalidate the offset map. A quote that is absent, or that overlaps an earlier highlight,
+is skipped and counted, never thrown. If a quote appears more than once in its paragraph
+the first occurrence wins — the same rule the grounding gate and the SemEval runner use.
 
-### `lib/api.ts`
-```ts
-export async function postAnalyze(body: AnalyzeRequest): Promise<AnalyzeResponse>
-export async function postCoverage(body: CoverageRequest): Promise<CoverageResponse>
-```
-Background-only. Reads base URL from `import.meta.env.API_BASE`.
+### `src/ui/`
+Plain DOM, no React, inside a **closed** shadow root: the content bundle stays around
+27 KB, no second React runtime lands on the page, and a page script cannot reach the
+controls. `tokens.css` holds colour, radius, shadow and motion for both the injected UI and
+the extension's own pages. `highlight.css` is the only stylesheet that lives in the page's
+light DOM, because the wrappers must sit inside the article's own text.
 
-### `lib/auth.ts`
-```ts
-export async function getIdToken(): Promise<string>
-```
-Imports from `firebase/auth/web-extension`. Anonymous sign-in on first call, SDK handles
-refresh. Background-only.
+### `src/pages/popup/`
+Sign in, sign up (13+ confirmation, required), forgot password, sign out — and the Analyze
+button, with a one-line report of what the active tab holds. It constructs no Supabase
+client; every auth action is a message to the background worker.
+
+### `src/pages/reset/`
+A full tab, reached by the password-recovery email link. A popup closes as soon as it
+loses focus, so the flow cannot complete there. It reads the recovery tokens from the URL
+fragment, clears them from the address bar, and hands them to the background worker.
 
 ---
 

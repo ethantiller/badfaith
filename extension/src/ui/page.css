@@ -1,0 +1,217 @@
+/* Shared by the popup and the password-reset tab. Same tokens as the injected UI,
+   so the extension's own screens and the in-page controls read as one thing. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--bf-font);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--bf-text);
+  background: var(--bf-surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+.bf-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+}
+
+.bf-popup {
+  width: 340px;
+}
+
+.bf-tab {
+  max-width: 420px;
+  margin: 48px auto;
+  border: 1px solid var(--bf-line);
+  border-radius: var(--bf-radius);
+}
+
+.bf-brand {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.bf-mark {
+  width: 9px;
+  height: 9px;
+  background: var(--bf-accent);
+  border-radius: 50%;
+}
+
+.bf-brand h1 {
+  margin: 0;
+  font: 650 15px/1.2 var(--bf-font);
+  letter-spacing: -0.01em;
+}
+
+.bf-lede {
+  margin: 0;
+  color: var(--bf-text-dim);
+}
+
+.bf-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bf-field label {
+  font-weight: 500;
+}
+
+.bf-field input[type='email'],
+.bf-field input[type='password'] {
+  width: 100%;
+  padding: 8px 10px;
+  font: 400 13px/1.4 var(--bf-font);
+  color: var(--bf-text);
+  background: var(--bf-surface);
+  border: 1px solid var(--bf-line);
+  border-radius: var(--bf-radius-sm);
+}
+
+.bf-field input:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--bf-accent);
+  outline-offset: 1px;
+}
+
+.bf-check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--bf-text-dim);
+  cursor: pointer;
+}
+
+.bf-check input {
+  margin: 2px 0 0;
+  accent-color: var(--bf-accent);
+}
+
+.bf-submit {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 14px;
+  font: 500 13px/1.3 var(--bf-font);
+  color: var(--bf-on-accent);
+  background: var(--bf-accent);
+  border: 1px solid transparent;
+  border-radius: var(--bf-radius-sm);
+  cursor: pointer;
+}
+
+.bf-submit:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.bf-secondary {
+  min-height: 34px;
+  padding: 0 14px;
+  font: 500 13px/1.3 var(--bf-font);
+  color: var(--bf-text);
+  background: var(--bf-surface);
+  border: 1px solid var(--bf-line);
+  border-radius: var(--bf-radius-sm);
+  cursor: pointer;
+}
+
+.bf-links {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 2px;
+  border-top: 1px solid var(--bf-line);
+  margin-top: 2px;
+  padding-top: 12px;
+}
+
+.bf-link {
+  padding: 0;
+  font: 400 12px/1.4 var(--bf-font);
+  color: var(--bf-accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.bf-notice {
+  margin: 0;
+  padding: 9px 11px;
+  color: var(--bf-text);
+  background: var(--bf-accent-soft);
+  border-radius: var(--bf-radius-sm);
+}
+
+.bf-error {
+  margin: 0;
+  color: var(--bf-danger);
+}
+
+.bf-page-state {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--bf-line);
+}
+
+.bf-account {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 12px;
+  background: var(--bf-surface-sunken);
+  border-radius: var(--bf-radius-sm);
+}
+
+.bf-account strong {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.bf-account span {
+  color: var(--bf-text-dim);
+}
+
+.bf-spin {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: bf-page-spin 700ms linear infinite;
+}
+
+@keyframes bf-page-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bf-spin {
+    animation: none;
+  }
+}
