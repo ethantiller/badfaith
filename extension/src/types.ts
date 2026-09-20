@@ -111,8 +111,6 @@ export interface AnalyzeResponse {
 
 export interface CoverageRequest {
   doc_hash: string;
-  claim_id: string;
-  quote: string;
   entities: string[];
   title: string;
 }
@@ -136,10 +134,9 @@ export interface CoverageMeta {
 }
 
 export interface CoverageResponse {
-  claim_id: string;
-  status: VerificationStatus;
+  doc_hash: string;
+  summary: string;
   related: RelatedSource[];
-  omissions: Omission[];
   meta: CoverageMeta;
 }
 

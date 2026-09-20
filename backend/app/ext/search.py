@@ -35,6 +35,29 @@ def build_query(title: str, entities: Sequence[str]) -> str:
 	return " OR ".join(f'"{term}"' for term in terms)
 
 
+def build_article_summary_prompt(title: str, articles: Sequence[Article]) -> str:
+	"""Format related articles into one bounded, labeled Nemotron input."""
+	if not articles:
+		raise ValueError("Article summaries require at least one article")
+
+	blocks = []
+	for index, article in enumerate(articles, start=1):
+		blocks.append(
+			f"Article {index}\n"
+			f"Title: {article.headline}\n"
+			f"Summary: {article.snippet}\n"
+			f"URL: {article.url}"
+		)
+
+	return (
+		f"Write one concise, neutral summary of the related coverage about {title!r}. "
+		"Use only the article information below. Mention the main consensus and any "
+		"important disagreement. Return JSON with exactly one string field named "
+		"summary.\n\n"
+		+ "\n\n".join(blocks)
+	)
+
+
 def _outlet_from_url(url: str) -> str:
 	hostname = _canonical_domain(url)
 	name = hostname.split(".")[0]
