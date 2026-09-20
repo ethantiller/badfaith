@@ -1,9 +1,20 @@
 """Public API contracts. Hand-mirror in extension/lib/types.ts."""
 
 from enum import StrEnum
+from typing import Literal
 from typing import Literal, Self
 
 from pydantic import BaseModel, Field, model_validator
+
+
+# --- Request size caps ---
+# Enforced at the schema layer so an oversized payload is rejected before any
+# handler runs. See docs/architecture.md section 6, "Security posture".
+
+MAX_PARAGRAPHS = 400
+MAX_PARAGRAPH_CHARS = 5_000
+MAX_URL_CHARS = 2_048
+MAX_TITLE_CHARS = 512
 
 
 # --- Enums ---
@@ -106,6 +117,20 @@ class CoverageResponse(BaseModel):
 
 # --- Analysis ---
 
+class Paragraph(BaseModel):
+    """One numbered paragraph as the content script extracted it."""
+
+    id: int = Field(ge=0)
+    text: str = Field(min_length=1, max_length=MAX_PARAGRAPH_CHARS)
+
+
+class AnalyzeRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=MAX_URL_CHARS)
+    title: str = Field(default="", max_length=MAX_TITLE_CHARS)
+    section_hint: Literal["opinion", "news"] | None = None
+    paragraphs: list[Paragraph] = Field(min_length=1, max_length=MAX_PARAGRAPHS)
+
+
 # Size caps live here, not in Settings: Field(max_length=...) is evaluated at import.
 MAX_PARAGRAPHS = 300
 MAX_CHARS_PER_PARAGRAPH = 4000
@@ -177,6 +202,12 @@ __all__ = [
     "Omission",
     "CoverageMeta",
     "CoverageResponse",
+    "MAX_PARAGRAPHS",
+    "MAX_PARAGRAPH_CHARS",
+    "MAX_URL_CHARS",
+    "MAX_TITLE_CHARS",
+    "Paragraph",
+    "AnalyzeRequest",
     "Flag",
     "Claim",
     "AnalyzeMeta",

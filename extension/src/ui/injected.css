@@ -1,0 +1,456 @@
+/* Shadow-root stylesheet for everything Bad Faith puts on an article page.
+   The UI sits on top of someone else's journalism, so it stays subordinate:
+   one neutral surface, one hairline, one radius. The highlight sweep in
+   highlight.css is the only place this design raises its voice. */
+
+:host {
+  all: initial;
+  font-family: var(--bf-font);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.bf-dock {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  font-family: var(--bf-font);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bf-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- The pill --- */
+
+.bf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 34px;
+  margin: 0;
+  padding: 0 14px;
+  font: 500 13px/1.3 var(--bf-font);
+  color: var(--bf-text);
+  text-align: left;
+  background: var(--bf-surface);
+  border: 1px solid var(--bf-line);
+  border-radius: 999px;
+  box-shadow: var(--bf-shadow);
+  cursor: pointer;
+  transition: border-color var(--bf-fast) var(--bf-ease);
+}
+
+.bf-pill:hover:not(:disabled) {
+  border-color: var(--bf-accent-line);
+}
+
+.bf-pill:disabled {
+  cursor: default;
+}
+
+.bf-pill[data-state='signedOut'],
+.bf-pill[data-state='error'] {
+  cursor: default;
+}
+
+.bf-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--bf-accent);
+  border-radius: 50%;
+}
+
+.bf-pill[data-state='signedOut'] .bf-dot,
+.bf-pill[data-state='stale'] .bf-dot {
+  background: var(--bf-text-dim);
+}
+
+.bf-pill[data-state='error'] .bf-dot {
+  background: var(--bf-danger);
+}
+
+.bf-pill-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.bf-pill-count {
+  flex: none;
+  padding-left: 8px;
+  margin-left: 2px;
+  color: var(--bf-text-dim);
+  border-left: 1px solid var(--bf-line);
+}
+
+.bf-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--bf-accent-line);
+  border-top-color: var(--bf-accent);
+  border-radius: 50%;
+  animation: bf-spin 700ms linear infinite;
+}
+
+@keyframes bf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.bf-inline-action {
+  flex: none;
+  padding: 0;
+  font: 500 13px/1.3 var(--bf-font);
+  color: var(--bf-accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* --- The card --- */
+
+.bf-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: min(70vh, 540px);
+  overflow: hidden;
+  background: var(--bf-surface);
+  border: 1px solid var(--bf-line);
+  border-radius: var(--bf-radius);
+  box-shadow: var(--bf-shadow);
+  animation: bf-card-in var(--bf-base) var(--bf-ease);
+}
+
+@keyframes bf-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.bf-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--bf-line);
+}
+
+.bf-card-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font: 650 15px/1.3 var(--bf-font);
+  letter-spacing: -0.01em;
+}
+
+.bf-card-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}
+
+.bf-icon-button {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font: 400 15px/1 var(--bf-font);
+  color: var(--bf-text-dim);
+  background: none;
+  border: 0;
+  border-radius: var(--bf-radius-sm);
+  cursor: pointer;
+}
+
+.bf-icon-button:hover {
+  color: var(--bf-text);
+  background: var(--bf-surface-sunken);
+}
+
+.bf-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.bf-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--bf-line);
+}
+
+.bf-section:last-child {
+  border-bottom: 0;
+}
+
+.bf-section-title {
+  margin: 0 0 8px;
+  font: 500 12px/1.3 var(--bf-font);
+  color: var(--bf-text-dim);
+}
+
+.bf-tally {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.bf-tally dt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bf-tally dd {
+  margin: 0;
+  color: var(--bf-text-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.bf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bf-row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  margin: 0 -8px;
+  font: 400 13px/1.45 var(--bf-font);
+  color: var(--bf-text);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--bf-radius-sm);
+  cursor: pointer;
+}
+
+.bf-row:hover {
+  background: var(--bf-surface-sunken);
+}
+
+/* The flag list is in reading order, so the paragraph number is information. */
+.bf-row-index {
+  flex: none;
+  min-width: 18px;
+  color: var(--bf-text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.bf-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.bf-row-technique {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.bf-row-name {
+  font-weight: 500;
+}
+
+.bf-row-quote {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--bf-text-dim);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.bf-chip {
+  flex: none;
+  padding: 1px 7px;
+  font-size: 11px;
+  color: var(--bf-accent-strong);
+  background: rgba(47, 109, 180, var(--bf-chip-a, 0.12));
+  border-radius: 999px;
+}
+
+.bf-chip[data-severity='low'] {
+  --bf-chip-a: 0.09;
+}
+.bf-chip[data-severity='medium'] {
+  --bf-chip-a: 0.16;
+}
+.bf-chip[data-severity='high'] {
+  --bf-chip-a: 0.26;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bf-chip {
+    background: rgba(107, 163, 224, var(--bf-chip-a, 0.16));
+  }
+}
+
+.bf-claim {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 7px 0;
+}
+
+.bf-claim-quote {
+  flex: 1;
+  min-width: 0;
+}
+
+.bf-claim-type {
+  display: block;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}
+
+.bf-ghost-button {
+  flex: none;
+  padding: 4px 9px;
+  font: 500 12px/1.3 var(--bf-font);
+  color: var(--bf-text);
+  background: var(--bf-surface);
+  border: 1px solid var(--bf-line);
+  border-radius: var(--bf-radius-sm);
+  cursor: pointer;
+}
+
+.bf-ghost-button:disabled {
+  color: var(--bf-text-dim);
+  cursor: default;
+  opacity: 0.7;
+}
+
+.bf-empty {
+  margin: 0;
+  color: var(--bf-text-dim);
+}
+
+.bf-card-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-top: 1px solid var(--bf-line);
+}
+
+.bf-toggle {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+  cursor: pointer;
+}
+
+.bf-toggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--bf-accent);
+}
+
+.bf-text-button {
+  padding: 0;
+  font: 500 12px/1.3 var(--bf-font);
+  color: var(--bf-accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* --- The hover summary --- */
+
+.bf-tip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 10px 12px;
+  font: 400 13px/1.5 var(--bf-font);
+  color: var(--bf-text);
+  background: var(--bf-surface);
+  border: 1px solid var(--bf-line);
+  border-radius: var(--bf-radius);
+  box-shadow: var(--bf-shadow);
+  opacity: 0;
+  transition: opacity var(--bf-fast) var(--bf-ease);
+  pointer-events: none;
+}
+
+.bf-tip[data-open='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bf-tip-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 5px;
+}
+
+.bf-tip-name {
+  font-weight: 600;
+}
+
+.bf-tip-confidence {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}
+
+.bf-tip-body {
+  margin: 0;
+  max-width: 58ch;
+}
+
+.bf-tip-meta {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--bf-text-dim);
+}
+
+/* --- Shared --- */
+
+:where(button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--bf-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bf-card,
+  .bf-tip,
+  .bf-spinner {
+    animation: none;
+    transition: none;
+  }
+}

@@ -1,4 +1,7 @@
-import { createClient, SupabaseClient, Session, User } from '@supabase/supabase-js';
+// Background-worker only. The popup and the reset page never construct a Supabase
+// client; they message the background instead, so exactly one context owns the
+// session and nothing races on the refresh token.
+import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import type {
   UserSignInRequest,
   UserSignInResponse,
@@ -79,9 +82,29 @@ export async function signIn(
 export async function resetPassword(email: string): Promise<void> {
   const client = getSupabaseClient();
   const { error } = await client.auth.resetPasswordForEmail(email, {
-    redirectTo: chrome.runtime.getURL('index.html?reset=true'),
+    // A full tab, not the popup: a popup closes as soon as it loses focus, so an
+    // email-link flow can never finish there.
+    redirectTo: chrome.runtime.getURL('reset.html'),
   });
 
+  if (error) throw error;
+}
+
+/** Completes a password recovery using the tokens the reset page read from its URL. */
+export async function recoverPassword(
+  accessToken: string,
+  refreshToken: string,
+  newPassword: string,
+): Promise<void> {
+  const client = getSupabaseClient();
+  const { error: sessionError } = await client.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+
+  if (sessionError) throw sessionError;
+
+  const { error } = await client.auth.updateUser({ password: newPassword });
   if (error) throw error;
 }
 
