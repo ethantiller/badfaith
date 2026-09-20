@@ -534,7 +534,7 @@ exact match is reported alongside it.
 **Caveats to disclose in `notes`.** The corpus is dense — about 17 labeled spans per
 article — so recall will be limited for a pipeline that flags conservatively. The articles
 date from mid-2017 to early 2019 and come from 13 propaganda and 36 non-propaganda outlets.
-Nothing here is tuned on the data. Only train was scored, on a subset of `n` articles.
+The labeling prompt was revised once after a 5-article pilot on the train split, so the pipeline is not fully untouched by this data. Only train was scored, on a subset of `n` articles.
 
 ### `runners/symmetry.py`
 Loads `pairs.jsonl` (article, party-swapped article), runs both, reports mean absolute
