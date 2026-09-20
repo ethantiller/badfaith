@@ -49,7 +49,7 @@ The user opens a news article on a supported site.
    to the background service worker, which is the only part of the extension that holds
    credentials or talks to the network. It attaches the Supabase access token and POSTs to
    the backend. The content script sends this **only when the user clicks Analyze in the
-   popup** (section 3.1), never automatically.
+   side panel** (section 3.1), never automatically.
 
 4. **The backend checks cache first.** Cache key is a hash of the URL plus a hash of the
    article text, so a re-edited article misses the cache correctly. On a hit, it returns
@@ -89,14 +89,16 @@ owns all `fetch` calls, owns the message handlers. Holds no state in module-leve
 because Chrome evicts idle workers; anything that must survive goes to `chrome.storage`.
 Rejects messages whose `sender.id` isn't our own extension ID.
 
-**Popup** — a small React app: sign up, sign in, sign out, password reset, **and the
-Analyze button**. It shows no analysis results beyond a one-line summary. There is no side
-panel and no in-extension report page. The trigger lives here rather than on the page so
-that an ordinary tab carries no Bad Faith UI at all — the content script renders nothing
-until the user asks.
+**Side panel** — a small React app, opened via Chrome's native `chrome.sidePanel` API when
+the user clicks the toolbar icon: sign up, sign in, sign out, password reset, **the Analyze
+button, and the report itself**. Unlike a popup it stays open across tab switches, so it
+tracks which tab it is currently reporting on and re-asks that tab's content script for
+status on every switch rather than caching results itself. The trigger lives here rather
+than on the page so that an ordinary tab carries no Bad Faith UI at all — the content
+script renders nothing until the user asks.
 
-A separate full-tab page, `reset.html`, completes the password-recovery email link: a
-popup closes the moment it loses focus, so that flow cannot finish there.
+A separate full-tab page, `reset.html`, completes the password-recovery email link:
+Supabase's own redirect opens that link in a normal tab, not inside the side panel.
 
 The manifest deliberately omits `externally_connectable`, so no website can message the
 extension directly. Host permissions start narrow — five reliable sites beat fifty flaky
@@ -109,33 +111,33 @@ The browser already has the rendered page, including content behind a paywall th
 is entitled to and text injected by the site's own JavaScript, and news sites routinely
 block requests originating from cloud IP ranges.
 
-### 3.1 UI plan: the trigger is in the popup, the report is in the page
+### 3.1 UI plan: the trigger and the report are in the side panel, the highlights are in the page
 
-The extension's own screens are the login popup and the password-reset tab. The popup also
-holds the Analyze button. Everything the reader sees *about the article* is injected into
-the article page, so they read the story and the audit in the same place.
+The extension's own screen is the side panel (plus the password-reset tab). The side panel
+holds sign-in, the Analyze button, and the compact report — a technique tally, the flagged
+phrases in reading order, and extracted claims. Highlights and their hover tooltip are the
+only Bad Faith UI still injected into the article page itself, so the reader sees the exact
+phrase in place while reading the fuller explanation beside it, not on top of it. Chrome
+resizes the page for the panel natively; the extension does not touch the host page's
+layout to make room for it.
 
 **Nothing is rendered on a page until the user asks.** On load the content script only
 registers a message listener. It parses paragraphs locally, with no network call, when the
-popup asks for status. An ordinary page therefore carries no Bad Faith DOM, no observer and
-no styles at all.
+side panel asks for status. An ordinary page therefore carries no Bad Faith DOM, no observer
+and no styles at all.
 
 **Surfaces:**
 
-- **Popup** — reports whether the current tab holds an article ("14 paragraphs ready to
+- **Side panel** — reports whether the current tab holds an article ("14 paragraphs ready to
   read" / "No article text here") and offers **Analyze this article**. Signed-out users see
-  the login form instead. After a run it summarises the result in one line and offers
-  Analyze again.
+  the login form instead. After a run it renders the full report, and re-fetches that tab's
+  status whenever the panel switches to look at a different tab.
 - **Highlights** on flagged quotes, wrapped with `Range`/`TreeWalker`, never `innerHTML`.
   Hover or keyboard focus shows a tooltip: technique, severity, confidence, explanation,
-  paragraph number.
-- **Badge** — a small fixed-position pill, bottom right, which exists only from the moment
-  analysis starts. It shows the loading state, then document type and flag count, and
-  expands into a compact card listing techniques and claims. Clicking a flag in the card
-  scrolls to and pulses its highlight. "Clear" removes the badge, the card and every
-  wrapper, leaving the page as found.
-- **Error states** — rendered in the badge and in the popup ("Too many requests. Try again
-  later."). A failure never blocks or alters the article text.
+  paragraph number. Hovering a phrase also lights the matching row in the side panel, and
+  hovering a row lights the phrase, over one message each way.
+- **Error states** — rendered in the side panel ("Too many requests. Try again later."). A
+  failure never blocks or alters the article text.
 
 **Isolation.** Every injected element other than the highlight wrappers lives in a **closed**
 Shadow DOM host, so site CSS cannot restyle it, ours cannot leak out, and a page script
@@ -187,7 +189,7 @@ paragraphs, an unknown `section_hint`) throw, because they mean a bug on this si
 `unknown` is a display value only (`ui/labels.ts`, `DisplayDocType`) and never appears on
 the wire. `section_hint` is `"opinion" | null`, and a null hint is what makes `/analyze`
 work the section out from the paragraphs, so a response always carries a real `doc_type`.
-Unknown is what the badge, card and popup print if one ever does not — better than
+Unknown is what the side panel prints if one ever does not — better than
 asserting "News report" over a document nothing classified.
 
 ---
