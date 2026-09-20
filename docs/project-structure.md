@@ -61,7 +61,7 @@ an oversized payload is a 422 before any handler runs:
 
 ```json
 {
-  "doc_type": "news | opinion | other",
+  "doc_type": "news | news_with_slight_bias | news_with_heavy_bias | opinion | other",
   "doc_type_source": "metadata | model",
   "flags": [
     {
@@ -85,7 +85,7 @@ an oversized payload is a 422 before any handler runs:
   "meta": {
     "cached": false,
     "doc_hash": "sha256:...",
-    "model_route": "nano | super",
+    "model_route": "small | large",
     "latency_ms": 2140,
     "flags_dropped": 2
   }
@@ -94,7 +94,8 @@ an oversized payload is a 422 before any handler runs:
 
 `claims` carry no verification status here. Verification is `/coverage`, which is
 user-triggered. `flags_dropped` is the grounding gate's reject count — surface it in the
-panel, it's a credibility signal.
+panel, it's a credibility signal. `model_route` is the tier that labeled the article,
+`small` or `large`.
 
 ### `POST /coverage` request
 
@@ -184,7 +185,7 @@ backend/
 │   ├── api/                   (HTTP route handlers)
 │   │   ├── __init__.py
 │   │   ├── coverage.py        (POST /coverage endpoint)
-│   │   ├── analyze.py         (TODO: POST /analyze)
+│   │   ├── analyze.py         (POST /analyze: auth, rate limit, delegates to the pipeline)
 │   │   ├── health.py          (TODO: GET /health)
 │   │   └── evals.py           (TODO: GET /eval/results)
 │   ├── db/                    (Database, connection pooling, ORM)
@@ -196,13 +197,30 @@ backend/
 │   │   └── rate_limit.py      (Rate limit checking, bucket math, increments)
 │   ├── ext/                   (External service integrations)
 │   │   ├── __init__.py
-│   │   ├── search.py          (DuckDuckGo web search wrapper)
-│   │   └── [future: nemotron.py, gdelt.py]
-│   └── [future: pipeline/, clients/, prompts/, utils/]
+│   │   ├── nemotron.py        (NemotronClient, the only caller of the model API)
+│   │   └── search.py          (DuckDuckGo web search wrapper)
+│   ├── pipeline/              (Analysis pipeline)
+│   │   ├── __init__.py
+│   │   ├── orchestrate.py     (PipelineContext, run_analysis)
+│   │   ├── classify.py        (doc type, severity policy)
+│   │   ├── label.py           (flags and claims per batch)
+│   │   └── ground.py          (grounding gate)
+│   ├── prompts/               (classify.txt, label.txt)
+│   ├── schemas/
+│   │   └── models.py          (lenient Raw* shapes the model returns)
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   └── text.py            (normalization, batching, sampling)
+│   └── [future: clients/ (gdelt, store), verify pipeline]
 └── tests/
+    ├── conftest.py            (dummy settings so the pipeline imports without a database)
     ├── unit/
     │   ├── __init__.py
-    │   └── test_coverage.py
+    │   ├── test_analyze_request.py
+    │   ├── test_analyze_route.py
+    │   ├── test_coverage.py
+    │   ├── test_ground.py
+    │   └── test_pipeline.py
     └── integration/
         └── __init__.py
 ```
@@ -217,7 +235,7 @@ class Settings(BaseSettings):
     DATABASE_INSTANCE_STRING: str              # Supabase async PostgreSQL URL
     supabase_url: str
     supabase_anon_key: str
-    nemotron_api_key: str          # from mounted secret file (when implemented)
+    nvidia_api_key: str            # from mounted secret file (when implemented)
     cache_ttl_hours: int = 24
 ```
 `pydantic-settings` with `get_settings()` and `lru_cache`. Nothing reads `os.environ`
@@ -243,6 +261,19 @@ async def get_coverage(request: CoverageRequest,
 ```
 Checks rate limit, calls web search, transforms results, returns. Delegates to middleware
 for rate limiting.
+
+### `app/api/analyze.py`
+```python
+@router.post("/analyze", response_model=AnalyzeResponse)
+async def analyze(payload: AnalyzeRequest, request: Request,
+                  session: AsyncSession = Depends(get_db_session),
+                  user_id: UUID = Depends(get_current_user))
+```
+Rate-limit check, then `run_analysis` with the `PipelineContext` from `app.state.pipeline`,
+then the rate-limit increment (successful analyses only, as in `/coverage`). Answers 429
+when limited, 502 when no batch produced a usable result, and 503 when the server has no
+NVIDIA key (it still boots, and `/coverage` keeps working). Caching is not wired yet: it
+needs a frozen `doc_hash` (see the TODO in the route).
 
 ### `app/db/connection.py`
 ```python
@@ -272,9 +303,63 @@ Implements fixed-window rate limiting with per-user and global hourly ceilings (
 ```python
 async def search(title: str, entities: list[str], *, max_records: int, timelimit: str) -> list[Article]
 ```
+Searches DuckDuckGo news for coverage of a claim. Social and reference domains are
+dropped and only one result per domain is kept. The blocking `ddgs` call runs in a worker
+thread so it doesn't stall the event loop.
+
+### `app/pipeline/orchestrate.py`
+```python
+@dataclass
+class PipelineContext:
+    nemotron: NemotronClient
+    model_small: str
+    model_large: str
+    label_route: Literal["small", "large"] = "large"
+    batch_size: int = 5
+    max_concurrency: int = 8
+    budget_s: float = 25.0
+
+async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResponse
+```
+The only function routes call. Sequence: resolve doc type → batch paragraphs → label the
+batches concurrently (at most `max_concurrency` model calls in flight) → ground → number
+claims `c0..cN` in article order → assemble. `label_route` picks which model labels and is
+what `meta.model_route` reports; the routing eval flips it.
+
+**Partial failure.** A batch that raises, or is still running when `budget_s` runs out, is
+cancelled and logged; its paragraphs come back unlabeled and the request still succeeds. If
+*every* batch fails, `AnalysisError` is raised (the route answers 502) rather than returning
+a clean article that was never actually read. The failed-batch count is only logged for now:
+`meta` has no field for it yet.
+
+### `app/pipeline/classify.py`
+```python
+async def resolve_doc_type(section_hint: str | None, title: str,
+                           sample: list[Paragraph], ctx) -> tuple[DocType, DocTypeSource]
+```
+A non-null `section_hint` short-circuits with no model call. Otherwise one small-model call;
+a failed call or an unknown answer falls back to `other`, whose severity policy changes
+nothing.
+
+`SEVERITY_POLICY` is the explicit doc type → technique → severity table. Its starting values
+mark the wording that is expected in opinion writing (loaded language, name calling,
+exaggeration/minimization, repetition, slogans, flag waving) `high` in news and `low` in
+opinion; every other technique keeps the model's severity. These values are a placeholder
+for editorial review.
+
+### `app/pipeline/label.py`
+```python
+async def label_batch(paragraphs: list[Paragraph], doc_type: DocType,
+                      model: str, ctx) -> tuple[list[Flag], list[Claim]]
+```
 One call per batch returning both flags and claims — the merged design. Batch size around
-5 paragraphs, tune on latency. One reprompt on JSON parse failure, then give up on that
-batch and log it.
+5 paragraphs, tune on latency. The client makes one reprompt on a JSON parse failure; if
+that also fails, `NemotronError` propagates and the orchestrator decides what a failed batch
+means. Items with an unknown technique or claim type are skipped. An unknown severity falls
+back to `medium`, because a grounded flag is never dropped over a secondary field.
+
+Each paragraph goes into the prompt as one `[id] text` line, so article text can't forge a
+paragraph line, and the prompt tells the model the paragraphs are untrusted data.
 
 **Quote the minimal span.** `label.txt` tells the model to quote only the words that carry
 the technique, not the whole sentence. SemEval's gold spans are short phrases, so
@@ -300,6 +385,12 @@ apostrophes, non-breaking spaces, em dashes, wrong `paragraph_id`, and fabricate
 the first occurrence. `highlight.ts` and the SemEval runner use the same rule, so what the
 panel highlights and what the eval scores agree.
 
+**Kept quotes are the paragraph's own text.** Matching ignores typography, so a kept item's
+quote is rewritten to the exact characters from the paragraph (curly quotes, dash style and
+all). `highlight.ts` and the SemEval runner can then locate it with a plain substring search.
+Drop reasons: `empty_quote`, `unknown_paragraph`, `wrong_paragraph` (the quote exists, in a
+different paragraph) and `not_found` (fabricated, paraphrased, or spanning paragraphs).
+
 ### `app/pipeline/verify.py`
 ```python
 async def verify_claim(claim: Claim, title: str, ctx) -> CoverageResponse
@@ -307,11 +398,11 @@ async def verify_claim(claim: Claim, title: str, ctx) -> CoverageResponse
 Builds the GDELT query from claim entities, fetches, then one Nemotron call comparing the
 claim against the returned snippets.
 
-### `app/clients/nemotron.py`
+### `app/ext/nemotron.py`
 ```python
 class NemotronClient:
-    async def complete_json(self, prompt: str, model: str,
-                            schema: type[BaseModel], *, retries: int = 2) -> BaseModel
+    async def complete_json(self, prompt: str, model: str, schema: type[T], *,
+                            retries: int = 2, thinking: bool = False) -> T
 ```
 The single choke point for model calls. Owns retries with jittered backoff, per-call
 timeout, JSON extraction, Pydantic parsing, the reprompt, and structured logging of token
@@ -343,7 +434,8 @@ Firestore access lives only here. Collections:
 ### `app/prompts/*.txt`
 Plain text with `{placeholders}`, loaded at import. Prompts in files, not string literals
 in Python — three people editing prompts inside functions will produce merge conflicts all
-night.
+night. `classify.txt` and `label.txt` exist. Literal JSON braces in a template are doubled
+(`{{ }}`) because the templates are filled with `str.format`.
 
 ### `app/utils/hashing.py`
 ```python
@@ -355,7 +447,9 @@ demo article, so freeze it early.
 
 ### `app/utils/text.py`
 `normalize_for_match()`, `batch_paragraphs()`, `sample_for_classification()`. Shared by the
-pipeline and the eval harness.
+pipeline and the eval harness. `normalize_with_map()` also returns each normalized
+character's index in the original text; the grounding gate uses it to hand back the
+paragraph's exact text.
 
 ---
 
@@ -586,9 +680,8 @@ the free API tier is rate limited, and the seed keeps runs comparable. Record `n
 2. Split the article into paragraphs, keeping each paragraph's start offset.
 3. Call `run_analysis` directly. No HTTP, no server.
 4. Convert each flag to article offsets: the paragraph's start plus the quote's position
-   in it. This works only because quotes are verbatim. Find the quote the way the grounding
-   gate matched it (after normalization, mapped back to original offsets), and use the
-   first occurrence if it repeats.
+   in it. The grounding gate returns every kept quote as the paragraph's exact text, so a
+   plain `str.find` (first occurrence) gives the position.
 5. Collapse our 16 labels onto SemEval's 14 classes using the table in the technique enum
    section.
 6. Score per technique — exact match and overlap — as precision, recall and F1.

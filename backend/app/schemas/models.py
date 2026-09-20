@@ -1,7 +1,7 @@
 """Shapes Nemotron is asked to return, kept separate from the public response schema.
 
 Deliberately lenient (plain str, defaults) so one bad label degrades one item instead of
-failing a batch. The pipeline coerces these into the strict types in responses.py.
+failing a batch. The pipeline coerces these into the strict types in types.py.
 """
 
 from pydantic import BaseModel, Field

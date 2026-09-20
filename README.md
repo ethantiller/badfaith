@@ -62,7 +62,7 @@ runs: 400 paragraphs, 5,000 characters per paragraph, a 2,048-character URL, a
 
 ```json
 {
-  "doc_type": "news | opinion | other",
+  "doc_type": "news | news_with_slight_bias | news_with_heavy_bias | opinion | other",
   "doc_type_source": "metadata | model",
   "flags": [
     {
@@ -86,7 +86,7 @@ runs: 400 paragraphs, 5,000 characters per paragraph, a 2,048-character URL, a
   "meta": {
     "cached": false,
     "doc_hash": "sha256:...",
-    "model_route": "nano | super",
+    "model_route": "small | large",
     "latency_ms": 2140,
     "flags_dropped": 2
   }
@@ -95,7 +95,8 @@ runs: 400 paragraphs, 5,000 characters per paragraph, a 2,048-character URL, a
 
 `claims` carry no verification status here. Verification is `/coverage`, which is
 user-triggered. `flags_dropped` is the grounding gate's reject count — surface it in the
-panel, it's a credibility signal.
+panel, it's a credibility signal. `model_route` is the tier that labeled the article,
+`small` or `large`.
 
 ### `POST /coverage` request
 
@@ -228,7 +229,7 @@ client and puts them on `app.state`. No business logic. Under 60 lines.
 ### `app/config.py`
 ```python
 class Settings(BaseSettings):
-    nemotron_api_key: str          # from mounted secret file
+    nvidia_api_key: str            # from mounted secret file
     nemotron_base_url: str
     model_small: str
     model_large: str
@@ -252,14 +253,18 @@ Two FastAPI dependencies.
   counter increment against `rate_limits/{uid}/{hour_bucket}`, plus the global bucket.
   Raises 429.
 
-### `app/routes/analyze.py`
+### `app/api/analyze.py`
 ```python
 @router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze(req: AnalyzeRequest, uid: str = Depends(current_uid),
-                  _: None = Depends(enforce_rate_limit)) -> AnalyzeResponse
+async def analyze(payload: AnalyzeRequest, request: Request,
+                  session: AsyncSession = Depends(get_db_session),
+                  user_id: UUID = Depends(get_current_user))
 ```
-Computes `doc_hash`, checks cache, on miss calls `orchestrate.run_analysis(...)`, writes
-cache, returns. Route does no pipeline work itself — it's cache logic and delegation.
+Rate-limit check, then `run_analysis` with the `PipelineContext` from `app.state.pipeline`,
+then the rate-limit increment (successful analyses only, as in `/coverage`). Answers 429
+when limited, 502 when no batch produced a usable result, and 503 when the server has no
+NVIDIA key (it still boots, and `/coverage` keeps working). Caching is not wired yet: it
+needs a frozen `doc_hash` (see the TODO in the route).
 
 ### `app/routes/coverage.py`
 ```python
@@ -294,28 +299,57 @@ model output change doesn't ripple into your public contract.
 
 ### `app/pipeline/orchestrate.py`
 ```python
+@dataclass
+class PipelineContext:
+    nemotron: NemotronClient
+    model_small: str
+    model_large: str
+    label_route: Literal["small", "large"] = "large"
+    batch_size: int = 5
+    max_concurrency: int = 8
+    budget_s: float = 25.0
+
 async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResponse
 ```
-The only function routes call. Sequence: resolve doc type → batch paragraphs → fan out
-labeling with `asyncio.gather` → ground → assemble. Owns the timeout budget and the
-partial-failure policy (a failed batch degrades that paragraph, it does not fail the
-request).
+The only function routes call. Sequence: resolve doc type → batch paragraphs → label the
+batches concurrently (at most `max_concurrency` model calls in flight) → ground → number
+claims `c0..cN` in article order → assemble. `label_route` picks which model labels and is
+what `meta.model_route` reports; the routing eval flips it.
+
+**Partial failure.** A batch that raises, or is still running when `budget_s` runs out, is
+cancelled and logged; its paragraphs come back unlabeled and the request still succeeds. If
+*every* batch fails, `AnalysisError` is raised (the route answers 502) rather than returning
+a clean article that was never actually read. The failed-batch count is only logged for now:
+`meta` has no field for it yet.
 
 ### `app/pipeline/classify.py`
 ```python
 async def resolve_doc_type(section_hint: str | None, title: str,
-                           sample: list[Paragraph], ctx) -> tuple[DocType, str]
+                           sample: list[Paragraph], ctx) -> tuple[DocType, DocTypeSource]
 ```
-Returns the type and its source. Short-circuits on `section_hint` without a model call.
+A non-null `section_hint` short-circuits with no model call. Otherwise one small-model call;
+a failed call or an unknown answer falls back to `other`, whose severity policy changes
+nothing.
+
+`SEVERITY_POLICY` is the explicit doc type → technique → severity table. Its starting values
+mark the wording that is expected in opinion writing (loaded language, name calling,
+exaggeration/minimization, repetition, slogans, flag waving) `high` in news and `low` in
+opinion; every other technique keeps the model's severity. These values are a placeholder
+for editorial review.
 
 ### `app/pipeline/label.py`
 ```python
 async def label_batch(paragraphs: list[Paragraph], doc_type: DocType,
-                      ctx) -> tuple[list[Flag], list[Claim]]
+                      model: str, ctx) -> tuple[list[Flag], list[Claim]]
 ```
 One call per batch returning both flags and claims — the merged design. Batch size around
-5 paragraphs, tune on latency. One reprompt on JSON parse failure, then give up on that
-batch and log it.
+5 paragraphs, tune on latency. The client makes one reprompt on a JSON parse failure; if
+that also fails, `NemotronError` propagates and the orchestrator decides what a failed batch
+means. Items with an unknown technique or claim type are skipped. An unknown severity falls
+back to `medium`, because a grounded flag is never dropped over a secondary field.
+
+Each paragraph goes into the prompt as one `[id] text` line, so article text can't forge a
+paragraph line, and the prompt tells the model the paragraphs are untrusted data.
 
 **Quote the minimal span.** `label.txt` tells the model to quote only the words that carry
 the technique, not the whole sentence. SemEval's gold spans are short phrases, so
@@ -340,6 +374,12 @@ apostrophes, non-breaking spaces, em dashes, wrong `paragraph_id`, and fabricate
 **One quote, one place.** If a quote occurs more than once in its paragraph, it refers to
 the first occurrence. `highlight.ts` and the SemEval runner use the same rule, so what the
 panel highlights and what the eval scores agree.
+
+**Kept quotes are the paragraph's own text.** Matching ignores typography, so a kept item's
+quote is rewritten to the exact characters from the paragraph (curly quotes, dash style and
+all). `highlight.ts` and the SemEval runner can then locate it with a plain substring search.
+Drop reasons: `empty_quote`, `unknown_paragraph`, `wrong_paragraph` (the quote exists, in a
+different paragraph) and `not_found` (fabricated, paraphrased, or spanning paragraphs).
 
 ### `app/pipeline/verify.py`
 ```python
@@ -471,9 +511,8 @@ the free API tier is rate limited, and the seed keeps runs comparable. Record `n
 2. Split the article into paragraphs, keeping each paragraph's start offset.
 3. Call `run_analysis` directly. No HTTP, no server.
 4. Convert each flag to article offsets: the paragraph's start plus the quote's position
-   in it. This works only because quotes are verbatim. Find the quote the way the grounding
-   gate matched it (after normalization, mapped back to original offsets), and use the
-   first occurrence if it repeats.
+   in it. The grounding gate returns every kept quote as the paragraph's exact text, so a
+   plain `str.find` (first occurrence) gives the position.
 5. Collapse our 16 labels onto SemEval's 14 classes using the table in the technique enum
    section.
 6. Score per technique — exact match and overlap — as precision, recall and F1.

@@ -36,13 +36,13 @@ def build_query(title: str, entities: Sequence[str]) -> str:
 
 
 def build_article_summary_prompt(title: str, articles: Sequence[Article]) -> str:
-	"""Format search results as a bounded, source-labeled Nemotron input."""
+	"""Format related articles into one bounded, labeled Nemotron input."""
 	if not articles:
 		raise ValueError("Article summaries require at least one article")
 
-	article_blocks = []
+	blocks = []
 	for index, article in enumerate(articles, start=1):
-		article_blocks.append(
+		blocks.append(
 			f"Article {index}\n"
 			f"Title: {article.headline}\n"
 			f"Summary: {article.snippet}\n"
@@ -50,11 +50,11 @@ def build_article_summary_prompt(title: str, articles: Sequence[Article]) -> str
 		)
 
 	return (
-		"Summarize the consensus and important disagreements across the news articles "
-		f"below about {title!r}. Return one concise neutral summary. "
-		"Use only the article information provided. Do not mention the formatting or "
-		"the existence of this prompt.\n\n"
-		+ "\n\n".join(article_blocks)
+		f"Write one concise, neutral summary of the related coverage about {title!r}. "
+		"Use only the article information below. Mention the main consensus and any "
+		"important disagreement. Return JSON with exactly one string field named "
+		"summary.\n\n"
+		+ "\n\n".join(blocks)
 	)
 
 
