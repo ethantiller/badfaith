@@ -9,7 +9,7 @@ from backend.app.deps import ensure_quote_in_text
 from backend.app.ext.nemotron import NemotronClient
 from backend.app.pipeline.classify import resolve_doc_type
 from backend.app.pipeline.label import label_batch
-from backend.app.types import AnalyzeMeta, AnalyzeRequest, AnalyzeResponse
+from backend.app.types import AnalyzeMeta, AnalyzeRequest, AnalyzeResponse, DocType
 from backend.app.utils.text import batch_paragraphs, sample_for_classification
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,11 @@ async def run_analysis(req: AnalyzeRequest, ctx: PipelineContext) -> AnalyzeResp
         claim.model_copy(update={"id": f"c{n}"})
         for n, claim in enumerate(sorted(grounded_claims, key=in_article_order))
     ]
+    
+    if len(kept_flags) > 10 and doc_type == DocType.NEWS:
+        doc_type = DocType.NEWS_WITH_HEAVY_BIAS
+    elif 0 < len(kept_flags) <= 10 and doc_type == DocType.NEWS:
+        doc_type = DocType.NEWS_WITH_SLIGHT_BIAS
 
     return AnalyzeResponse(
         doc_type=doc_type,

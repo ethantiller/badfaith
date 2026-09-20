@@ -55,6 +55,8 @@ class VerificationStatus(StrEnum):
 
 class DocType(StrEnum):
     NEWS = "news"
+    NEWS_WITH_HEAVY_BIAS = "news_with_heavy_bias"
+    NEWS_WITH_SLIGHT_BIAS = "news_with_slight_bias"
     OPINION = "opinion"
     OTHER = "other"
 

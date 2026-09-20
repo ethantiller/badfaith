@@ -62,7 +62,7 @@ runs: 400 paragraphs, 5,000 characters per paragraph, a 2,048-character URL, a
 
 ```json
 {
-  "doc_type": "news | opinion | other",
+  "doc_type": "news | news_with_slight_bias | news_with_heavy_bias | opinion | other",
   "doc_type_source": "metadata | model",
   "flags": [
     {

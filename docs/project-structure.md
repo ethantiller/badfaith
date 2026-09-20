@@ -61,7 +61,7 @@ an oversized payload is a 422 before any handler runs:
 
 ```json
 {
-  "doc_type": "news | opinion | other",
+  "doc_type": "news | news_with_slight_bias | news_with_heavy_bias | opinion | other",
   "doc_type_source": "metadata | model",
   "flags": [
     {
