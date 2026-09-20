@@ -140,7 +140,7 @@ class Flag(BaseModel):
     severity: Severity
     confidence: float
     explanation: str
-
+    flags_dropped: int = 0  # grounding gate reject count
 
 class Claim(BaseModel):
     id: str = ""  # numbered c0..cN in paragraph order, post-grounding
