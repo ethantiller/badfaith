@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +12,9 @@ class Settings(BaseSettings):
 
     # Supabase
     supabase_url: str
-    supabase_key: str  # Maps to supabase_anon_key
+    supabase_anon_key: str = Field(
+        validation_alias=AliasChoices("SUPABASE_ANON_KEY", "SUPABASE_KEY")
+    )
 
     # CORS — set to specific extension ID in production
     extension_origin: str = "chrome-extension://*"
@@ -47,11 +50,6 @@ class Settings(BaseSettings):
             url = "postgresql+asyncpg://" + url[13:]
 
         return url
-
-    @property
-    def supabase_anon_key(self) -> str:
-        """Alias for supabase_key."""
-        return self.supabase_key
 
 
 @lru_cache(maxsize=1)
