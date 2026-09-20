@@ -40,3 +40,7 @@ class RawOmission(BaseModel):
 class RawVerification(BaseModel):
     status: str
     omissions: list[RawOmission] = Field(default_factory=list)
+
+
+class RawArticleSummary(BaseModel):
+    summary: str

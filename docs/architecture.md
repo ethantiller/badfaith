@@ -250,8 +250,9 @@ Response:
 }
 ```
 
-Claims carry no verification status here. Verification is `/coverage`, which is
-user-triggered and returns related sources and omissions of its own.
+Claims carry no verification status here. Article-level related coverage is `/coverage`,
+which is user-triggered and returns related sources plus one aggregate summary for the
+article. It does not verify individual claims.
 
 Two properties matter. Every finding carries a `paragraph_id`, so the extension searches
 one element instead of the whole page. Every finding carries a verbatim `quote`, so

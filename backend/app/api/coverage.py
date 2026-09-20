@@ -3,11 +3,12 @@ from typing import Annotated
 from uuid import UUID
 
 from ddgs.exceptions import DDGSException
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.ext.search import search
-from backend.app.types import CoverageRequest, CoverageResponse, VerificationStatus, RelatedSource, Omission, CoverageMeta
+from backend.app.ext.search import build_article_summary_prompt
+from backend.app.types import CoverageRequest, CoverageResponse, RelatedSource, CoverageMeta
 from backend.app.middleware.rate_limit import check_rate_limit, increment_rate_limit
 from backend.app.deps import get_db_session
 from backend.app.ext.supabase import get_current_user
@@ -28,6 +29,7 @@ async def get_coverage(
     request: CoverageRequest,
     session: Annotated[AsyncSession, Depends(get_db_session)],
     user_payload: Annotated[dict, Depends(get_current_user)],
+    http_request: Request = None,
 ):
     """
     Endpoint to retrieve coverage information for a claim.
@@ -68,6 +70,22 @@ async def get_coverage(
             detail="No related news articles were found.",
         )
 
+    if http_request is None:
+        summary_text = " ".join(article.snippet for article in articles)
+    else:
+        from backend.app.ext.nemotron import MODEL_SMALL, NemotronClient
+        from backend.app.schemas.models import RawArticleSummary
+
+        try:
+            summary = await NemotronClient(http_request.app.state.http_client).complete_json(
+                build_article_summary_prompt(request.title, articles),
+                MODEL_SMALL,
+                RawArticleSummary,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}") from exc
+        summary_text = summary.summary
+
     related = [
         RelatedSource(
             outlet=article.outlet,
@@ -80,10 +98,9 @@ async def get_coverage(
     ]
 
     response = CoverageResponse(
-        claim_id=request.claim_id,
-        status=VerificationStatus.UNVERIFIED,
+        doc_hash=request.doc_hash,
+        summary=summary_text,
         related=related,
-        omissions=[],
         meta=CoverageMeta(
             sources_queried=len(related),
             latency_ms=round((perf_counter() - started_at) * 1000),
