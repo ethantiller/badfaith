@@ -10,3 +10,13 @@ export function Brand() {
 export function Spinner() {
   return <span className="bf-spin" aria-hidden="true" />;
 }
+
+export function Dots() {
+  return (
+    <span className="bf-dots" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}

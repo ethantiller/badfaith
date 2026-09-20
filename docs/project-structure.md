@@ -467,7 +467,6 @@ scaffold that got built is plain Vite, and the three-pass build below is what th
 extension/
 ├── vite.config.ts        (one config, branching on BUILD_TARGET)
 ├── public/               (manifest.json, sidepanel.html, reset.html)
-├── dev/                  (design harness: a fake article driving the real UI; not shipped)
 └── src/
     ├── background.ts     (entry: service worker, the only token holder and fetch caller)
     ├── types.ts          (hand-mirror of app/types.py, plus the message envelopes)
@@ -490,8 +489,8 @@ extension/
     │   └── watcher.ts    (debounced MutationObserver for staleness)
     ├── ui/               (injected UI: plain DOM, mostly in a closed shadow root)
     │   ├── dom.ts        (el/button helpers)
-    │   ├── host.ts  badge.ts  card.ts  tooltip.ts  labels.ts
-    │   └── tokens.css  injected.css  highlight.css  page.css  sidepanel.css
+    │   ├── host.ts  tooltip.ts  labels.ts
+    │   └── tokens.css  injected.css  highlight.css  page.css  sidepanel.css  report.css
     └── pages/            (the extension's own React screens)
         ├── mount.tsx     (shared bootstrap: inject styles, render into #root)
         ├── Brand.tsx     (shared heading and spinner)
@@ -508,7 +507,6 @@ Three build passes, because the entry points have different rules. The pages pas
 `sidepanel` and `reset` as ES modules sharing a React chunk. `BUILD_TARGET=content` and
 `BUILD_TARGET=background` each produce one self-contained IIFE, because **a content script
 is a classic script**: a shared chunk or a surviving `import` statement breaks it at load.
-A fourth target, `preview`, builds the dev harness.
 
 There must be no `vite.config.js` in the directory — Vite resolves it *before* the
 TypeScript config, so edits to the `.ts` file would be silently ignored.
@@ -644,8 +642,9 @@ light DOM, because the wrappers must sit inside the article's own text.
 
 ### `src/pages/sidepanel/`
 Sign in, sign up (13+ confirmation, required), forgot password, sign out, the Analyze
-button, and the report — a technique tally, the flagged phrases in reading order, and
-extracted claims, reusing the same `ui/card.ts` renderer the old in-page card used. It
+button, and a three-tab report: Summary (technique tally, flagged phrases in reading
+order), Claims (click scrolls the article to the claim mark) and Coverage (a user-triggered
+`POST /coverage`, cached per `doc_hash` so tab switches do not refire it). It
 constructs no Supabase client; every auth action is a message to the background worker. It
 tracks whichever tab it is currently reporting on, since unlike a popup it stays open
 across tab switches, and re-fetches that tab's `PAGE_STATUS` on every switch instead of

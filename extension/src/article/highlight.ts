@@ -1,11 +1,20 @@
 // Wraps flagged quotes in the live article. Never innerHTML, never node replacement:
 // the news site's own listeners and React roots have to survive this.
 import highlightCss from '../ui/highlight.css?inline';
-import type { Flag } from '../types';
+import type { Claim, Flag } from '../types';
 
 const STYLE_ID = 'badfaith-highlight-styles';
 const FLAG_SELECTOR = 'span[data-badfaith="flag"]';
+const CLAIM_SELECTOR = 'span[data-badfaith="claim"]';
+// Operations that must not care which kind a wrapper is: clearing, the "off" toggle, restore.
+const ANY_SELECTOR = 'span[data-badfaith]';
 const PULSE_MS = 1800;
+
+/** Shape both `Flag` and `Claim` satisfy — enough to locate and wrap a quote. */
+interface Quoted {
+  paragraph_id: number;
+  quote: string;
+}
 
 /** One emitted character of normalized text, and the DOM text it came from. */
 interface CharAnchor {
@@ -91,17 +100,18 @@ function toSegments(anchors: CharAnchor[], from: number, to: number): CharAnchor
   return segments;
 }
 
+/** Everything a flag wrapper and a claim wrapper share; kind-specific bits layer on top. */
 function buildWrapper(
-  flag: Flag,
-  flagId: string,
+  kind: 'flag' | 'claim',
+  id: string,
   index: number,
   order: number,
   reveal: boolean,
+  ariaLabel: string,
 ): HTMLSpanElement {
   const span = document.createElement('span');
-  span.setAttribute('data-badfaith', 'flag');
-  span.setAttribute('data-flag-id', flagId);
-  span.setAttribute('data-bf-severity', flag.severity);
+  span.setAttribute('data-badfaith', kind);
+  span.setAttribute(kind === 'flag' ? 'data-flag-id' : 'data-claim-id', id);
   // The stroke is drawn once, in reading order; highlight.css turns this into the
   // animation delay. Skipped when we are only restoring wrappers a site re-render
   // threw away — the reader already watched that happen.
@@ -125,11 +135,33 @@ function buildWrapper(
     span.setAttribute('tabindex', '0');
     span.setAttribute('role', 'button');
     span.setAttribute('aria-describedby', 'badfaith-tooltip');
-    span.setAttribute('aria-label', `Flagged phrase: ${flag.quote}`);
+    span.setAttribute('aria-label', ariaLabel);
   } else {
     span.setAttribute('aria-hidden', 'true');
   }
   return span;
+}
+
+function buildFlagWrapper(
+  flag: Flag,
+  id: string,
+  index: number,
+  order: number,
+  reveal: boolean,
+): HTMLSpanElement {
+  const span = buildWrapper('flag', id, index, order, reveal, `Flagged phrase: ${flag.quote}`);
+  span.setAttribute('data-bf-severity', flag.severity);
+  return span;
+}
+
+function buildClaimWrapper(
+  claim: Claim,
+  id: string,
+  index: number,
+  order: number,
+  reveal: boolean,
+): HTMLSpanElement {
+  return buildWrapper('claim', id, index, order, reveal, `Checkable claim: ${claim.quote}`);
 }
 
 export function ensureHighlightStyles(): void {
@@ -147,26 +179,35 @@ export function flagId(flag: Flag, index: number): string {
 }
 
 /**
- * Wraps each flag's quote inside the one paragraph element it names. A quote that
+ * Wraps each item's quote inside the one paragraph element it names. A quote that
  * cannot be found, whose paragraph has since changed, or that overlaps an earlier
- * highlight is skipped and counted — never thrown.
+ * highlight is skipped and counted — never thrown. Shared by `applyFlags` and
+ * `applyClaims`; only id assignment and wrapper construction differ between them.
  *
  * `reveal` draws each stroke on, staggered by reading order. Pass false to put
  * wrappers back silently after the site re-rendered them away.
  */
-export function applyFlags(
-  flags: Flag[],
+function applyHighlights<T extends Quoted>(
+  items: T[],
   nodeMap: Map<number, HTMLElement>,
-  reveal = true,
+  reveal: boolean,
+  idOf: (item: T, index: number) => string,
+  buildItemWrapper: (
+    item: T,
+    id: string,
+    index: number,
+    order: number,
+    reveal: boolean,
+  ) => HTMLSpanElement,
 ): ApplyResult {
   ensureHighlightStyles();
 
-  const byParagraph = new Map<number, Array<{ flag: Flag; id: string; order: number }>>();
-  flags.forEach((flag, index) => {
-    const bucket = byParagraph.get(flag.paragraph_id);
-    const entry = { flag, id: flagId(flag, index), order: index };
+  const byParagraph = new Map<number, Array<{ item: T; id: string; order: number }>>();
+  items.forEach((item, index) => {
+    const bucket = byParagraph.get(item.paragraph_id);
+    const entry = { item, id: idOf(item, index), order: index };
     if (bucket) bucket.push(entry);
-    else byParagraph.set(flag.paragraph_id, [entry]);
+    else byParagraph.set(item.paragraph_id, [entry]);
   });
 
   let applied = 0;
@@ -184,14 +225,14 @@ export function applyFlags(
     const taken: Array<[number, number]> = [];
     const matches: Array<{
       id: string;
-      flag: Flag;
+      item: T;
       order: number;
       start: number;
       end: number;
     }> = [];
 
-    for (const { flag, id, order } of entries) {
-      const needle = normalizeForMatch(flag.quote).replace(/\s+/g, ' ').trim();
+    for (const { item, id, order } of entries) {
+      const needle = normalizeForMatch(item.quote).replace(/\s+/g, ' ').trim();
       if (!needle) {
         skipped += 1;
         continue;
@@ -201,19 +242,19 @@ export function applyFlags(
       const start = haystack.indexOf(needle);
       if (start < 0) {
         skipped += 1;
-        console.debug('[badfaith] quote not found in paragraph', paragraphId, flag.quote);
+        console.debug('[badfaith] quote not found in paragraph', paragraphId, item.quote);
         continue;
       }
 
       const end = start + needle.length;
       if (taken.some(([a, b]) => start < b && a < end)) {
         skipped += 1;
-        console.debug('[badfaith] quote overlaps an earlier highlight', flag.quote);
+        console.debug('[badfaith] quote overlaps an earlier highlight', item.quote);
         continue;
       }
 
       taken.push([start, end]);
-      matches.push({ id, flag, order, start, end });
+      matches.push({ id, item, order, start, end });
     }
 
     // Descending order: splitting a text node at a later offset leaves every earlier
@@ -230,7 +271,7 @@ export function applyFlags(
           const range = document.createRange();
           range.setStart(segment.node, segment.start);
           range.setEnd(segment.node, segment.end);
-          const wrapper = buildWrapper(match.flag, match.id, i, match.order, reveal);
+          const wrapper = buildItemWrapper(match.item, match.id, i, match.order, reveal);
           range.surroundContents(wrapper);
           wrappers.push(wrapper);
         }
@@ -239,12 +280,29 @@ export function applyFlags(
         // Unwind this quote's partial work; the page must never be left half-wrapped.
         wrappers.forEach(unwrap);
         skipped += 1;
-        console.debug('[badfaith] could not wrap quote', match.flag.quote, error);
+        console.debug('[badfaith] could not wrap quote', match.item.quote, error);
       }
     }
   }
 
   return { applied, skipped };
+}
+
+export function applyFlags(
+  flags: Flag[],
+  nodeMap: Map<number, HTMLElement>,
+  reveal = true,
+): ApplyResult {
+  return applyHighlights(flags, nodeMap, reveal, flagId, buildFlagWrapper);
+}
+
+/** Same matching and wrapping machinery as `applyFlags`, keyed by `claim.id` directly. */
+export function applyClaims(
+  claims: Claim[],
+  nodeMap: Map<number, HTMLElement>,
+  reveal = true,
+): ApplyResult {
+  return applyHighlights(claims, nodeMap, reveal, (claim) => claim.id, buildClaimWrapper);
 }
 
 function unwrap(span: Element): void {
@@ -257,7 +315,7 @@ function unwrap(span: Element): void {
 
 /** Leaves the article exactly as it was found. */
 export function clearHighlights(): void {
-  document.querySelectorAll(FLAG_SELECTOR).forEach(unwrap);
+  document.querySelectorAll(ANY_SELECTOR).forEach(unwrap);
   document.documentElement.removeAttribute('data-badfaith-highlights');
 }
 
@@ -265,14 +323,18 @@ export function highlightCount(): number {
   return document.querySelectorAll(FLAG_SELECTOR).length;
 }
 
+export function claimHighlightCount(): number {
+  return document.querySelectorAll(CLAIM_SELECTOR).length;
+}
+
 export function setHighlightsVisible(visible: boolean): void {
   if (visible) document.documentElement.removeAttribute('data-badfaith-highlights');
   else document.documentElement.setAttribute('data-badfaith-highlights', 'off');
 }
 
-/** A quote that crossed an inline element is several spans sharing one flag id. */
-function segmentsOf(id: string): NodeListOf<Element> {
-  return document.querySelectorAll(`${FLAG_SELECTOR}[data-flag-id="${CSS.escape(id)}"]`);
+/** A quote that crossed an inline element is several spans sharing one flag/claim id. */
+function segmentsOf(selector: string, attr: string, id: string): NodeListOf<Element> {
+  return document.querySelectorAll(`${selector}[${attr}="${CSS.escape(id)}"]`);
 }
 
 function setPulse(nodes: Iterable<Element>, on: boolean): void {
@@ -293,11 +355,15 @@ export function setFlagHot(id: string | null): void {
     node.removeAttribute('data-bf-hot');
   }
   if (!id) return;
-  for (const node of segmentsOf(id)) node.setAttribute('data-bf-hot', '');
+  for (const node of segmentsOf(FLAG_SELECTOR, 'data-flag-id', id)) node.setAttribute('data-bf-hot', '');
 }
 
 export function findFlagElement(id: string): HTMLElement | null {
-  return segmentsOf(id)[0] as HTMLElement | undefined ?? null;
+  return segmentsOf(FLAG_SELECTOR, 'data-flag-id', id)[0] as HTMLElement | undefined ?? null;
+}
+
+export function findClaimElement(id: string): HTMLElement | null {
+  return segmentsOf(CLAIM_SELECTOR, 'data-claim-id', id)[0] as HTMLElement | undefined ?? null;
 }
 
 export function focusFlag(id: string): void {
@@ -306,7 +372,19 @@ export function focusFlag(id: string): void {
 
   element.scrollIntoView({ behavior: 'smooth', block: 'center' });
   setPulse(document.querySelectorAll(`${FLAG_SELECTOR}[data-bf-pulse]`), false);
-  setPulse(segmentsOf(id), true);
+  setPulse(segmentsOf(FLAG_SELECTOR, 'data-flag-id', id), true);
 
-  window.setTimeout(() => setPulse(segmentsOf(id), false), PULSE_MS);
+  window.setTimeout(() => setPulse(segmentsOf(FLAG_SELECTOR, 'data-flag-id', id), false), PULSE_MS);
+}
+
+/** Same navigate-and-pulse behavior as `focusFlag`, scoped to claim wrappers. */
+export function focusClaim(id: string): void {
+  const element = findClaimElement(id);
+  if (!element) return;
+
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setPulse(document.querySelectorAll(`${CLAIM_SELECTOR}[data-bf-pulse]`), false);
+  setPulse(segmentsOf(CLAIM_SELECTOR, 'data-claim-id', id), true);
+
+  window.setTimeout(() => setPulse(segmentsOf(CLAIM_SELECTOR, 'data-claim-id', id), false), PULSE_MS);
 }
