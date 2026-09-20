@@ -1,0 +1,38 @@
+.PHONY: help install dev build clean typecheck preview clean-dist ci
+
+help:
+	@echo Bad Faith Extension - Windows commands
+	@echo.
+	@echo   make -f Makefile.windows install       Install dependencies (npm)
+	@echo   make -f Makefile.windows dev           Watch build
+	@echo   make -f Makefile.windows build         Build production bundle once
+	@echo   make -f Makefile.windows typecheck     Run TypeScript type checking
+	@echo   make -f Makefile.windows clean         Remove dist/ and node_modules/
+	@echo   make -f Makefile.windows clean-dist    Remove only dist/
+	@echo   make -f Makefile.windows preview       Preview the built extension
+	@echo.
+
+install:
+	npm install
+
+dev: clean-dist
+	npx tsc
+	npx vite build --watch
+
+build: typecheck clean-dist
+	npx tsc
+	npx vite build
+
+typecheck:
+	npm run typecheck
+
+clean: clean-dist
+	if exist node_modules rmdir /s /q node_modules
+
+clean-dist:
+	if exist dist rmdir /s /q dist
+
+preview: build
+	npm run preview
+
+ci: clean install build
