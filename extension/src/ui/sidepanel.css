@@ -293,6 +293,74 @@ body,
   color: var(--bf-text-dim);
 }
 
+.bf-subtabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--bf-line);
+}
+
+.bf-subtab {
+  padding: 4px 12px;
+  font: 500 12px/1.5 var(--bf-font);
+  color: var(--bf-text-dim);
+  background: none;
+  border: 1px solid var(--bf-line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color var(--bf-fast) var(--bf-ease),
+    background-color var(--bf-fast) var(--bf-ease);
+}
+
+.bf-subtab:hover {
+  color: var(--bf-text);
+}
+
+.bf-subtab[aria-pressed='true'] {
+  color: var(--bf-text);
+  background: var(--bf-accent-soft);
+  border-color: var(--bf-text-dim);
+}
+
+/* A citation leads with who said it: the name is the largest thing on the row. */
+.bf-citation-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 4px;
+}
+
+.bf-citation-speaker {
+  font: 600 14px/1.35 var(--bf-font);
+  color: var(--bf-text);
+}
+
+.bf-role {
+  padding: 1px 8px;
+  font: 500 11px/1.5 var(--bf-font);
+  color: var(--bf-text);
+  background: var(--bf-accent-soft);
+  border: 1px solid var(--bf-text-dim);
+  border-radius: 999px;
+}
+
+.bf-role[data-role='unknown'],
+.bf-role[data-role='anonymous'] {
+  color: var(--bf-text-dim);
+  background: none;
+  border-style: dashed;
+}
+
+.bf-citation-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--bf-text-dim);
+}
+
 .bf-entities {
   display: flex;
   flex-wrap: wrap;

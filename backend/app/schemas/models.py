@@ -44,3 +44,22 @@ class RawVerification(BaseModel):
 
 class RawArticleSummary(BaseModel):
     summary: str
+
+
+class RawCitation(BaseModel):
+    paragraph_id: int
+    quote: str
+    speaker: str = ""
+
+
+class RawCitationBatch(BaseModel):
+    citations: list[RawCitation] = Field(default_factory=list)
+
+
+class RawSpeakerRole(BaseModel):
+    speaker: str
+    role: str = "unknown"
+
+
+class RawSpeakerRoleBatch(BaseModel):
+    roles: list[RawSpeakerRole] = Field(default_factory=list)

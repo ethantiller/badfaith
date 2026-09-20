@@ -1,7 +1,12 @@
 // The hover summary. Rendered in the shadow host, never inside the article, so the
 // site's layout and stylesheet are untouched.
-import type { Flag } from '../types';
-import { SEVERITY_LABELS, TECHNIQUE_LABELS } from './labels';
+import type { Citation, Flag } from '../types';
+import {
+  SEVERITY_LABELS,
+  SPEAKER_ROLE_LABELS,
+  SPEAKER_ROLE_NOTES,
+  TECHNIQUE_LABELS,
+} from './labels';
 import { el } from './dom';
 
 const GAP = 10;
@@ -13,6 +18,8 @@ export interface TooltipView {
   element: HTMLElement;
   /** Schedules a show against the given anchor. */
   open(anchor: Element, flag: Flag): void;
+  /** Same tooltip, showing who a quote is credited to and what kind of source they are. */
+  openCitation(anchor: Element, citation: Citation): void;
   /** Schedules a hide; cancelled if the pointer lands on the tooltip. */
   close(): void;
   closeNow(): void;
@@ -62,21 +69,37 @@ export function createTooltip(): TooltipView {
     );
   }
 
-  function open(anchor: Element, flag: Flag): void {
+  function schedule(anchor: Element, fill: () => void): void {
     window.clearTimeout(hideTimer);
     window.clearTimeout(showTimer);
 
     showTimer = window.setTimeout(() => {
+      fill();
+      element.dataset.open = 'true';
+      position(anchor);
+    }, SHOW_DELAY);
+  }
+
+  function open(anchor: Element, flag: Flag): void {
+    schedule(anchor, () => {
       name.textContent = TECHNIQUE_LABELS[flag.technique];
       chip.textContent = SEVERITY_LABELS[flag.severity];
       chip.dataset.severity = flag.severity;
       confidence.textContent = `${Math.round(flag.confidence * 100)}% confident`;
       body.textContent = flag.explanation;
       meta.textContent = `Paragraph ${flag.paragraph_id + 1}`;
+    });
+  }
 
-      element.dataset.open = 'true';
-      position(anchor);
-    }, SHOW_DELAY);
+  function openCitation(anchor: Element, citation: Citation): void {
+    schedule(anchor, () => {
+      name.textContent = citation.speaker;
+      chip.textContent = SPEAKER_ROLE_LABELS[citation.speaker_role];
+      delete chip.dataset.severity;
+      confidence.textContent = '';
+      body.textContent = SPEAKER_ROLE_NOTES[citation.speaker_role];
+      meta.textContent = `Quoted source · Paragraph ${citation.paragraph_id + 1}`;
+    });
   }
 
   function closeNow(): void {
@@ -94,5 +117,5 @@ export function createTooltip(): TooltipView {
   element.addEventListener('pointerenter', () => window.clearTimeout(hideTimer));
   element.addEventListener('pointerleave', close);
 
-  return { element, open, close, closeNow };
+  return { element, open, openCitation, close, closeNow };
 }

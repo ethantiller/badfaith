@@ -142,6 +142,37 @@ async def search(
 			break
 	return articles
 
+async def search_speaker(
+	name: str,
+	context: str = "",
+	*,
+	max_results: int = 5,
+	searcher: Any | None = None,
+) -> list[str]:
+	"""Web-search a quoted speaker and return short result snippets ("title: body").
+
+	Used to decide the speaker's role. Unlike search(), this is a general text search, not
+	news-only, and does not block reference sites. Any DDGS failure yields an empty list:
+	the caller treats no evidence as an unknown role.
+	"""
+	name = " ".join(name.split()).replace('"', "")
+	if not name:
+		return []
+	query = f'"{name}" {" ".join(context.split())}'.strip()
+	request_searcher = searcher or DDGS(timeout=WEB_SEARCH_TIMEOUT_SECONDS)
+	try:
+		results = await asyncio.to_thread(request_searcher.text, query, max_results=max_results)
+	except DDGSException:
+		return []
+	snippets = []
+	for result in results:
+		title = str(result.get("title") or "").strip()
+		body = str(result.get("body") or "").strip()
+		if title or body:
+			snippets.append(f"{title}: {body}"[:400])
+	return snippets[:max_results]
+
+
 async def main() -> None:
 	try:
 		results = await search(
