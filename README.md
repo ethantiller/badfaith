@@ -28,10 +28,27 @@ supported, contradicted, or missing crucial context. Finally, the tool verifies 
 quotes used in the article and provides immediate background information on the speakers
 and organizations, giving readers full context on exactly who is shaping the narrative.
 
-| | | |
-|---|---|---|
-| ![Bad Faith demo 1](src/badfaith/image1.png) | ![Bad Faith demo 2](src/badfaith/image2.png) | ![Bad Faith demo 3](src/badfaith/image3.png) |
-| ![Bad Faith demo 4](src/badfaith/image4.png) | ![Bad Faith demo 5](src/badfaith/image5.png) | |
+
+
+Flagged phrases and manipulative rhetoric highlighted directly on the page:
+
+![Flagged phrases and manipulative rhetoric highlighted on an article](src/badfaith/image1.png)
+
+Testable claims extracted from the article for one-click verification:
+
+![Extractable claims pulled out of the article for verification](src/badfaith/image2.png)
+
+Live coverage lookup showing what other outlets are reporting on a claim:
+
+![Coverage view showing what other articles are saying about a claim](src/badfaith/image3.png)
+
+Biased passages rewritten into neutral, objective language:
+
+![Neutral rewriting of a biased passage](src/badfaith/image4.png)
+
+Opinion pieces automatically recognized and labeled as such:
+
+![Recognizing and flagging an opinion piece](src/badfaith/image5.png)
 
 ## How we built it
 
