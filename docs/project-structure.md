@@ -791,14 +791,19 @@ runtime and no training depends on it.
 
 **Data.** `datasets-v2.tgz` from the task's Zenodo record
 (https://zenodo.org/records/3952415, CC BY 4.0 — cite the task overview paper), fetched
-on demand into `eval/datasets/semeval/`. Test-set gold labels are hidden, so score on
-train and dev only and say so in `notes`. Use a fixed-seed subset of about 50 articles:
+on demand into `eval/datasets/semeval/`. Fetch it from Zenodo, not HuggingFace: the
+`SemEvalWorkshop/sem_eval_2020_task_11` dataset is a dead end — its loading script needs a
+registration passcode, expects different directory names than the real v2 tarball, and
+script-based loaders were removed in `datasets` 3.0. Test-set gold labels are hidden, and
+the published v2 corpus contains dev-articles but no dev gold labels, only train labels, so
+score on train only and say so in `notes`. Use a fixed-seed subset of about 50 articles:
 the free API tier is rate limited, and the seed keeps runs comparable. Record `n`.
 
 **How a run works.**
 1. Load each article's plain text and its gold spans, `(technique, start, end)` character
    offsets.
-2. Split the article into paragraphs, keeping each paragraph's start offset.
+2. Split the article into paragraphs, keeping each paragraph's start offset. Paragraphs
+   are built as 3-line groups, with the title line as paragraph 0.
 3. Call `run_analysis` directly. No HTTP, no server.
 4. Convert each flag to article offsets: the paragraph's start plus the quote's position
    in it. The grounding gate returns every kept quote as the paragraph's exact text, so a
@@ -807,13 +812,17 @@ the free API tier is rate limited, and the seed keeps runs comparable. Record `n
    section.
 6. Score per technique — exact match and overlap — as precision, recall and F1.
 
-**Open item.** Decide what counts as overlap (any overlap, or a minimum fraction of the
-gold span) when building the runner, and record the choice in `notes`.
+**Paragraph construction.** Grouping by 3 lines makes about 4.3% of gold spans
+structurally unreachable. The measured tradeoff was 4.8% at 1 line per paragraph and 4.6%
+at 4.
+
+**Scoring.** The headline is the normalized span-overlap F1 of Da San Martino et al.;
+exact match is reported alongside it.
 
 **Caveats to disclose in `notes`.** The corpus is dense — about 17 labeled spans per
 article — so recall will be limited for a pipeline that flags conservatively. The articles
 date from mid-2017 to early 2019 and come from 13 propaganda and 36 non-propaganda outlets.
-Nothing here is tuned on the data. Only train/dev were scored, on a subset of `n` articles.
+The labeling prompt was revised once after a 5-article pilot on the train split, so the pipeline is not fully untouched by this data. Only train was scored, on a subset of `n` articles.
 
 ### `runners/symmetry.py`
 Loads `pairs.jsonl` (article, party-swapped article), runs both, reports mean absolute

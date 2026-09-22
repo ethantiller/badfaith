@@ -145,3 +145,4 @@ temp/
 .claude
 CLAUDE.md
 AGENTS.md
+eval/datasets/semeval/

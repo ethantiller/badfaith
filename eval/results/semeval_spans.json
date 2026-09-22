@@ -1,0 +1,229 @@
+{
+  "name": "semeval_spans",
+  "headline_metric": "Span F1 (overlap)",
+  "headline_value": 0.1305161711546471,
+  "detail": {
+    "exact": {
+      "precision": 0.02564102564102564,
+      "recall": 0.03333333333333333,
+      "f1": 0.028985507246376812
+    },
+    "overlap": {
+      "precision": 0.09458019105077928,
+      "recall": 0.21049382716049383,
+      "f1": 0.1305161711546471
+    },
+    "per_technique": {
+      "Appeal_to_Authority": {
+        "gold": 1,
+        "predicted": 1,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Appeal_to_fear-prejudice": {
+        "gold": 0,
+        "predicted": 0,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Bandwagon,Reductio_ad_hitlerum": {
+        "gold": 0,
+        "predicted": 1,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Black-and-White_Fallacy": {
+        "gold": 0,
+        "predicted": 1,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Causal_Oversimplification": {
+        "gold": 0,
+        "predicted": 6,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Doubt": {
+        "gold": 4,
+        "predicted": 4,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.04285714285714286,
+          "recall": 0.25,
+          "f1": 0.07317073170731707
+        }
+      },
+      "Exaggeration,Minimisation": {
+        "gold": 3,
+        "predicted": 12,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Flag-Waving": {
+        "gold": 0,
+        "predicted": 0,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Loaded_Language": {
+        "gold": 10,
+        "predicted": 11,
+        "exact": {
+          "precision": 0.09090909090909091,
+          "recall": 0.1,
+          "f1": 0.09523809523809525
+        },
+        "overlap": {
+          "precision": 0.2983549783549784,
+          "recall": 0.43148148148148147,
+          "f1": 0.3527766976640986
+        }
+      },
+      "Name_Calling,Labeling": {
+        "gold": 5,
+        "predicted": 2,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.11764705882352941,
+          "recall": 0.2,
+          "f1": 0.14814814814814817
+        }
+      },
+      "Repetition": {
+        "gold": 7,
+        "predicted": 0,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Slogans": {
+        "gold": 0,
+        "predicted": 0,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Thought-terminating_Cliches": {
+        "gold": 0,
+        "predicted": 0,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      },
+      "Whataboutism,Straw_Men,Red_Herring": {
+        "gold": 0,
+        "predicted": 1,
+        "exact": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "overlap": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      }
+    },
+    "total_predicted_spans": 39,
+    "total_gold_spans": 30,
+    "articles_failed": [],
+    "flags_unlocatable": 0,
+    "lines_per_para": 3,
+    "seed": 11,
+    "n_articles_selected": 2,
+    "article_ids": [
+      "766084411",
+      "786344683"
+    ]
+  },
+  "n": 2,
+  "run_at": "2026-09-20T06:19:46.025290+00:00",
+  "notes": "Scored on the train split only: the SemEval test labels are hidden and the published PTC v2 corpus ships no dev labels. Fixed-seed subset of n articles. Paragraphs are 3-line groups, which makes roughly 4.3% of gold spans structurally unreachable (1.8% cross a paragraph boundary, 2.5% are duplicate fragments that resolve to an earlier first occurrence). The corpus averages about 17 gold spans per article, so recall is capped for a pipeline that flags conservatively. Articles date from 2017-2019 across 48 outlets. Nothing in the pipeline is tuned on this data. Overlap scoring follows Da San Martino et al."
+}
