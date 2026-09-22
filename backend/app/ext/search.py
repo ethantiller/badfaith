@@ -22,12 +22,19 @@ BLOCKED_DOMAINS = frozenset({
 })
 
 
+MAX_QUERY_TERMS = 6
+
+
 def build_query(title: str, entities: Sequence[str]) -> str:
+	# Long OR-chains (title plus every extracted entity) read as anomalous to search
+	# engines' bot detection and rarely match on non-DuckDuckGo backends either.
 	terms: list[str] = []
 	for value in (title, *entities):
 		normalized = " ".join(value.split()).replace('"', "")
 		if normalized and normalized not in terms:
 			terms.append(normalized)
+		if len(terms) >= MAX_QUERY_TERMS:
+			break
 
 	if not terms:
 		raise ValueError("Web searches require a title or at least one entity")
@@ -121,12 +128,23 @@ async def search(
 	query = build_query(title, entities)
 	request_searcher = searcher or DDGS(timeout=WEB_SEARCH_TIMEOUT_SECONDS)
 	candidate_limit = min(max_records * 3, 50)
-	results = await asyncio.to_thread(
-		request_searcher.news,
-		query,
-		max_results=candidate_limit,
-		timelimit=timelimit,
-	)
+	try:
+		results = await asyncio.to_thread(
+			request_searcher.news,
+			query,
+			max_results=candidate_limit,
+			timelimit=timelimit,
+		)
+	except DDGSException:
+		# A bot-detection block (e.g. DuckDuckGo's 50x anomaly page) is usually
+		# transient; one short backoff and retry clears most of these.
+		await asyncio.sleep(1.5)
+		results = await asyncio.to_thread(
+			request_searcher.news,
+			query,
+			max_results=candidate_limit,
+			timelimit=timelimit,
+		)
 	articles: list[Article] = []
 	seen_domains: set[str] = set()
 	for result in results:
